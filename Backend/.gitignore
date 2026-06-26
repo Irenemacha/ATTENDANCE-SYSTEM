@@ -1,0 +1,4 @@
+db.sqlite3
+course/migrations/__pycache__/
+departments/migrations/__pycache__/
+students/migrations/__pycache__/
