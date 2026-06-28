@@ -1,5 +1,8 @@
 from django.contrib import admin
-from django.contrib import admin
-from .models import Profile
+from .models import OTP
+from .models import UserSessionState
 
-admin.site.register(Profile)
+admin.site.register(UserSessionState)
+
+admin.site.register(OTP)
+

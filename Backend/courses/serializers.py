@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Course, Subject, LecturerSubject
+from .models import Course, Subject, LecturerAssignment
 
 
 class SubjectSerializer(serializers.ModelSerializer):
@@ -27,7 +27,7 @@ class LecturerSubjectSerializer(serializers.ModelSerializer):
     )
 
     class Meta:
-        model = LecturerSubject
+        model = LecturerAssignment
         fields = [
             'id',
             'lecturer',

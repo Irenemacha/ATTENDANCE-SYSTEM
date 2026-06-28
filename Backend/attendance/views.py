@@ -1,236 +1,368 @@
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from django.utils import timezone
-from django.utils import timezone
-from math import radians, sin, cos, sqrt, atan2
-from math import radians, sin, cos, sqrt, atan2
-from django.utils import timezone
-from rest_framework.decorators import api_view, permission_classes
-from accounts.permissions import IsStudent, IsLecturer, IsAdmin
+from geopy.distance import geodesic
+from rest_framework.permissions import IsAuthenticated
 
-from .models import Attendance, AttendanceSession
+from accounts.services import advance_user_state
+from accounts.models import UserSessionState
+from datetime import datetime
 
+from accounts.permissions import IsLecturer, IsStudent
+
+from courses.models import (
+    Course,
+    Subject,
+    Timetable,
+    LecturerCourse,
+    LecturerSubject
+)
+
+from .models import AttendanceSession, Attendance
+from .utils import calculate_distance
+
+def is_within_geofence(student_lat, student_lng, session_lat, session_lng, radius):
+    distance = geodesic(
+        (student_lat, student_lng),
+        (session_lat, session_lng)
+    ).meters
+
+    return distance <= radius
+
+
+# =========================
+# 1. START SESSION (LECTURER)
+# =========================
 @api_view(['POST'])
-def check_in(request):
-
-    student_lat = float(request.data.get("latitude"))
-    student_lon = float(request.data.get("longitude"))
-
-    session = AttendanceSession.objects.filter(is_active=True).first()
-
-    if not session:
-        return Response({"message": "No active session"}, status=400)
-
-    distance = calculate_distance(
-        student_lat,
-        student_lon,
-        session.latitude,
-        session.longitude
-    )
-
-    if distance > session.radius_meters:
-        return Response({
-            "message": "Outside classroom range",
-            "distance": round(distance, 2)
-        }, status=400)
-
-    attendance, created = Attendance.objects.get_or_create(
-        student=request.user,
-        session=session,
-        defaults={"status": "PENDING"}
-    )
-
-    attendance.check_in_time = timezone.now()
-    attendance.save()
-
-    return Response({
-        "message": "Checked in",
-        "distance": round(distance, 2)
-    })
-    wifi_ssid = request.data.get("wifi_ssid")
-    if session.allowed_wifi_ssid:
-        
-        if wifi_ssid != session.allowed_wifi_ssid:
-            return Response({
-            "message": "You are not connected to allowed WiFi",
-            "required": session.allowed_wifi_ssid,
-            "detected": wifi_ssid
-            }, status=400)
-         
-@api_view(['POST'])
-def check_out(request):
-
-    attendance = Attendance.objects.filter(
-        student=request.user,
-        check_out_time__isnull=True
-    ).first()
-
-    if not attendance:
-        return Response({"message": "No active check-in"}, status=400)
-
-    attendance.check_out_time = timezone.now()
-
-    session = attendance.session
-
-    total_seconds = session.duration_minutes * 60
-
-    spent_seconds = (attendance.check_out_time - attendance.check_in_time).seconds
-
-    ratio = (spent_seconds / total_seconds) * 100
-
-    # 🧠 STATE MACHINE LOGIC
-    if ratio >= 75:
-        attendance.status = "PRESENT"
-    elif 50 <= ratio < 75:
-        attendance.status = "LATE"
-    else:
-        attendance.status = "ABSENT"
-
-    attendance.save()
-
-    return Response({
-        "status": attendance.status,
-        "percentage": round(ratio, 2)
-    })
-
-@api_view(['POST'])
+@permission_classes([IsLecturer])
 def start_session(request):
 
-    # 🔴 HII NDIO PLACE SAHIHI
-    if AttendanceSession.objects.filter(
-        lecturer=request.user,
-        is_active=True
+    user = request.user
+
+    course_id = request.data.get("course_id")
+    subject_id = request.data.get("subject")
+    latitude = request.data.get("latitude")
+    longitude = request.data.get("longitude")
+    radius = request.data.get("radius")
+
+    # 1. check lecturer-course assignment
+    if not LecturerCourse.objects.filter(
+        lecturer=user,
+        course_id=course_id
     ).exists():
         return Response(
-            {"message": "You already have an active session"},
+            {"detail": "You are not assigned to this course"},
+            status=403
+        )
+
+    # 2. validate subject belongs to course
+    subject = Subject.objects.filter(
+        id=subject_id,
+        course_id=course_id
+    ).first()
+
+    if not subject:
+        return Response(
+            {"detail": "Invalid subject for this course"},
             status=400
         )
 
+    # 3. check lecturer-subject permission
+    if not LecturerSubject.objects.filter(
+        lecturer=user,
+        subject=subject
+    ).exists():
+        return Response(
+            {"detail": "Not allowed to teach this subject"},
+            status=403
+        )
+
+    # 4. create session
     session = AttendanceSession.objects.create(
-        lecturer=request.user,
-        course="Default Course",
-        is_active=True,
-        start_time=timezone.now()
+        lecturer=user,
+        course_id=course_id,
+        subject=subject,
+        latitude=latitude,
+        longitude=longitude,
+        radius_meters=radius,
+        is_active=True
     )
 
     return Response({
-        "message": "Session started",
+        "message": "Session started successfully",
         "session_id": session.id
     })
 
+
+# =========================
+# 2. CHECK IN (STUDENT)
+# =========================
 @api_view(['POST'])
-def end_session(request):
+@permission_classes([IsStudent])
+def check_in(request):
+
+    student = request.user
+    session_id = request.data.get("session_id")
+    latitude = request.data.get("latitude")
+    longitude = request.data.get("longitude")
+    
+    state = UserSessionState.objects.filter(user=student).first()
+
+    if not state:
+        return Response({"error": "No session state"}, status=400)
 
     session = AttendanceSession.objects.filter(
-        lecturer=request.user,
+        id=session_id,
+        is_active=True
+    ).first()
+    
+    if not session:
+        return Response({"detail": "Session not found"}, status=404)
+    active_class = get_active_class()
+
+
+    if not active_class:
+        active_class = get_active_class()
+
+    if not active_class:
+        return Response({"error": "No active class right now"}, status=400)
+
+    if session.course != active_class.course:
+        return Response({"error": "This session is not for current class time"}, status=403)
+  
+
+    # geofence check
+    distance = calculate_distance(
+        latitude,
+        longitude,
+        session.latitude,
+        session.longitude
+    )
+    
+    if distance > session.radius_meters:
+        return Response(
+        {"detail": "You are outside allowed area"},
+        status=403
+    )
+
+# ONLY UPDATE STATE AFTER SUCCESS
+    state.geofence_verified = True
+    state.save()
+    
+  
+    
+
+    if distance > session.radius_meters:
+        return Response(
+            {"detail": "You are outside allowed area"},
+            status=403
+        )
+
+    # prevent duplicate check-in
+    if Attendance.objects.filter(
+        student=student,
+        session=session
+    ).exists():
+        return Response(
+            {"detail": "Already checked in"},
+            status=400
+        )
+
+    Attendance.objects.create(
+        student=student,
+        session=session,
+        status="PRESENT"
+    )
+
+    return Response({"message": "Check-in successful"})
+
+
+# =========================
+# 3. CHECK OUT (STUDENT)
+# =========================
+@api_view(['POST'])
+@permission_classes([IsStudent])
+def check_out(request):
+
+    student = request.user
+    session_id = request.data.get("session_id")
+
+    attendance = Attendance.objects.filter(
+        student=student,
+        session_id=session_id
+    ).first()
+
+    if not attendance:
+        return Response(
+            {"detail": "You have not checked in"},
+            status=404
+        )
+
+    attendance.check_out_time = timezone.now()
+    attendance.save()
+
+    return Response({"message": "Check-out successful"})
+
+
+# =========================
+# 4. END SESSION (LECTURER)
+# =========================
+@api_view(['POST'])
+@permission_classes([IsLecturer])
+def end_session(request):
+
+    session_id = request.data.get("session_id")
+
+    session = AttendanceSession.objects.filter(
+        id=session_id,
         is_active=True
     ).first()
 
     if not session:
-        return Response({"message": "No active session"}, status=400)
+        return Response(
+            {"detail": "Session not found"},
+            status=404
+        )
 
     session.is_active = False
     session.end_time = timezone.now()
     session.save()
 
-    return Response({"message": "Session ended"})
-@api_view(['GET'])
-@permission_classes([IsStudent])
-def student_report(request):
-    
-    student = request.user
+    return Response({"message": "Session ended successfully"})
 
-    # total sessions student ameingia
-    total_attendance = Attendance.objects.filter(student=student).count()
 
-    # sessions alizopresent
-    present_count = Attendance.objects.filter(
-        student=student,
-        status="Present"
-    ).count()
-
-    if total_attendance == 0:
-        return Response({
-            "message": "No attendance records found"
-        }, status=400)
-
-    percentage = (present_count / total_attendance) * 100
-
-    return Response({
-        "student": student.username,
-        "total_sessions": total_attendance,
-        "present_sessions": present_count,
-        "message": "Student report",
-        "attendance_percentage": round(percentage, 2)
-       
-        
-    })
-
+# =========================
+# 5. LECTURER DASHBOARD (BASIC)
+# =========================
 @api_view(['GET'])
 @permission_classes([IsLecturer])
-def lecturer_session_report(request, session_id):
+def lecturer_dashboard(request):
 
-    session = AttendanceSession.objects.filter(id=session_id).first()
+    lecturer = request.user
 
-    if not session:
-        return Response({"message": "Session not found"}, status=404)
+    sessions = AttendanceSession.objects.filter(
+        lecturer=lecturer
+    ).order_by('-start_time')
 
-    records = Attendance.objects.filter(session=session)
+    data = []
 
-    total_students = records.count()
-    present = records.filter(status="Present").count()
-    late = records.filter(status="Late").count()
-    absent = records.filter(status="Absent").count()
+    for session in sessions:
+
+        attendance_qs = Attendance.objects.filter(session=session)
+
+        total = attendance_qs.count()
+        present = attendance_qs.filter(status="PRESENT").count()
+        late = attendance_qs.filter(status="LATE").count()
+        absent = attendance_qs.filter(status="ABSENT").count()
+        percentage = (present / total * 100) if total > 0 else 0
+
+        data.append({
+            "session_id": session.id,
+            "course": session.course.name,
+            "subject": session.subject.name,
+            "date": session.date,
+            "is_active": session.is_active,
+
+            # 🔥 ATTENDANCE STATS
+            "total_students": total,
+            "present": present,
+            "late": late,
+            "absent": absent,
+            "percentage": percentage,
+        })
 
     return Response({
-        "session_id": session.id,
-        "course": session.course,
-        "total_students": total_students,
-        "present": present,
-        "late": late,
-        "absent": absent,
-        "message": "Lecturer report"
+        "lecturer": lecturer.username,
+        "sessions": data
     })
-def auto_close_sessions():
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def mark_attendance(request):
+    user = request.user
+    session_id = request.data.get("session_id")
+    
+    session = AttendanceSession.objects.filter(
+    id=session_id,
+    is_active=True
+).first()
+    
+    if request.user.is_anonymous:
+       return Response({"error": "Unauthorized"}, status=403)
+   
+    if not state:
+        return Response({"error": "No session state found"}, status=400)
 
-    now = timezone.now()
+    if not session:
+       return Response({"error": "Invalid or inactive session"}, status=404)
 
-    active_sessions = AttendanceSession.objects.filter(is_active=True)
+    state = UserSessionState.objects.filter(user=user).first()
+    
+    from accounts.services import can_mark_attendance
 
-    for session in active_sessions:
+    allowed, message = can_mark_attendance(state) 
 
-        if session.start_time and session.duration_minutes:
+    if not allowed:
+        return Response({"error": message}, status=403)
+    
+    # 🛡️ FINAL AUTH LOCK (FINGERPRINT + OTP CHECK)
+    if not state.fingerprint_verified and not state.otp_verified:
+       return Response({"error": "Authentication incomplete"}, status=403)
+    
+    # 🛡️ SECURITY LOCK (STATE ENGINE CHECK)
+    allowed, message = can_mark_attendance(state)
 
-            end_time = session.start_time + timezone.timedelta(minutes=session.duration_minutes)
+    if not allowed:
+        return Response({"error": message}, status=403)
 
-            if now >= end_time:
+    if not state:
+        return Response({"error": "No session state"}, status=400)
 
-                session.is_active = False
-                session.save()
-                
-                
-def finalize_attendance(session):
+    # 🛡️ ANTI-BYPASS CHECKS (VERY IMPORTANT)
+    if not state.device_verified:
+        return Response({"error": "Device not verified"}, status=403)
 
-    attendances = Attendance.objects.filter(session=session)
+    if not state.geofence_verified:
+        return Response({"error": "Not inside class area"}, status=403)
 
-    for a in attendances:
+    if state.current_state != "ATTENDANCE_GRANTED":
+        return Response({"error": "Fingerprint/OTP not completed"}, status=403)
 
-        if not a.check_in_time:
-            a.status = "ABSENT"
 
-        elif not a.check_out_time:
-            a.status = "ABSENT"
+    # 🟢 FINAL SUCCESS
+    state.current_state = "ATTENDANCE_GRANTED"
+    state.save()
 
-        a.save()
-def calculate_distance(lat1, lon1, lat2, lon2):
+    advance_user_state(user, "attendance_success")
+    
+    Attendance.objects.create(
+    student=request.user,
+    session_id=request.data.get("session_id"),  
+    status="PRESENT"
+)
 
-    R = 6371000
+    return Response({
+        "message": "Attendance marked successfully"
+    })
+    
+    
+def get_active_class():
+    now = datetime.now()
 
-    dlat = radians(lat2 - lat1)
-    dlon = radians(lon2 - lon1)
+    day_map = {
+        0: "MON",
+        1: "TUE",
+        2: "WED",
+        3: "THU",
+        4: "FRI",
+        5: "SAT",
+        6: "SUN",
+    }
 
-    a = sin(dlat/2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon/2)**2
+    today = day_map[now.weekday()]
+    current_time = now.time()
 
-    c = 2 * atan2(sqrt(a), sqrt(1-a))
-
-    return R * c
+    return Timetable.objects.filter(
+        day=today,
+        start_time__lte=current_time,
+        end_time__gte=current_time
+    ).first()
