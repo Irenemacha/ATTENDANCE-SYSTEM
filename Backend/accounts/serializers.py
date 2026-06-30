@@ -11,4 +11,11 @@ class UserSerializer(serializers.ModelSerializer):
         fields = ['id', 'username', 'email', 'role']
 
     def get_role(self, obj):
-        return obj.profile.role
+        if obj.is_staff or obj.is_superuser:
+            return "admin"
+        if hasattr(obj, "student"):
+            return "student"
+        groups = list(obj.groups.values_list("name", flat=True))
+        if groups:
+            return groups[0].lower()
+        return "user"

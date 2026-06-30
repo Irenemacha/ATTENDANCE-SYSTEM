@@ -8,26 +8,32 @@ class IsAuthenticatedUser(BasePermission):
 
 class IsStudent(BasePermission):
     def has_permission(self, request, view):
-        print("USER:", request.user)
-        print("HAS PROFILE:", hasattr(request.user, "student_profile"))
         return (
             request.user.is_authenticated
-            and hasattr(request.user, "student_profile")
+            and hasattr(request.user, "student")
         )
 
 
 class IsLecturer(BasePermission):
     def has_permission(self, request, view):
         return (
-            request.user.is_authenticated and
-            hasattr(request.user, "lecturer_profile")
+            request.user.is_authenticated
+            and (
+                request.user.groups.filter(name__iexact="lecturer").exists()
+                or request.user.is_staff
+                or request.user.is_superuser
+            )
         )
 
 class IsHOD(BasePermission):
     def has_permission(self, request, view):
         return (
             request.user.is_authenticated
-            and hasattr(request.user, "hod_profile")
+            and (
+                request.user.groups.filter(name__iexact="hod").exists()
+                or request.user.is_staff
+                or request.user.is_superuser
+            )
         )
 
 class IsAdmin(BasePermission):

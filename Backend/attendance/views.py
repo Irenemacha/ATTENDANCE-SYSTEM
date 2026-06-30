@@ -17,6 +17,7 @@ from courses.models import (
     LecturerCourse,
     LecturerSubject
 )
+from students.models import Student
 
 from .models import AttendanceSession, Attendance
 from .utils import calculate_distance
@@ -101,15 +102,23 @@ def start_session(request):
 @permission_classes([IsStudent])
 def check_in(request):
 
-    student = request.user
+    user = request.user
     session_id = request.data.get("session_id")
     latitude = request.data.get("latitude")
     longitude = request.data.get("longitude")
     
-    state = UserSessionState.objects.filter(user=student).first()
+    state, _ = UserSessionState.objects.get_or_create(user=user)
 
-    if not state:
-        return Response({"error": "No session state"}, status=400)
+    try:
+        student = user.student
+    except Student.DoesNotExist:
+        return Response({"error": "Student profile not found"}, status=404)
+
+    if not session_id or latitude is None or longitude is None:
+        return Response(
+            {"error": "session_id, latitude and longitude are required"},
+            status=400
+        )
 
     session = AttendanceSession.objects.filter(
         id=session_id,
@@ -119,15 +128,7 @@ def check_in(request):
     if not session:
         return Response({"detail": "Session not found"}, status=404)
     active_class = get_active_class()
-
-
-    if not active_class:
-        active_class = get_active_class()
-
-    if not active_class:
-        return Response({"error": "No active class right now"}, status=400)
-
-    if session.course != active_class.course:
+    if active_class and session.course != active_class.course:
         return Response({"error": "This session is not for current class time"}, status=403)
   
 
@@ -146,17 +147,7 @@ def check_in(request):
     )
 
 # ONLY UPDATE STATE AFTER SUCCESS
-    state.geofence_verified = True
-    state.save()
-    
-  
-    
-
-    if distance > session.radius_meters:
-        return Response(
-            {"detail": "You are outside allowed area"},
-            status=403
-        )
+    state = advance_user_state(user, "geofence_success")
 
     # prevent duplicate check-in
     if Attendance.objects.filter(
@@ -168,13 +159,16 @@ def check_in(request):
             status=400
         )
 
-    Attendance.objects.create(
-        student=student,
-        session=session,
-        status="PRESENT"
-    )
+    state.current_state = "FINGERPRINT_REQUIRED"
+    state.save()
 
-    return Response({"message": "Check-in successful"})
+    return Response({
+        "message": "Geofence verified. Fingerprint required before attendance is marked.",
+        "session_id": session.id,
+        "distance_meters": round(distance, 2),
+        "requires_fingerprint": True,
+        "state": state.current_state,
+    })
 
 
 # =========================
@@ -184,8 +178,13 @@ def check_in(request):
 @permission_classes([IsStudent])
 def check_out(request):
 
-    student = request.user
+    user = request.user
     session_id = request.data.get("session_id")
+
+    try:
+        student = user.student
+    except Student.DoesNotExist:
+        return Response({"error": "Student profile not found"}, status=404)
 
     attendance = Attendance.objects.filter(
         student=student,
@@ -280,71 +279,113 @@ def lecturer_dashboard(request):
 def mark_attendance(request):
     user = request.user
     session_id = request.data.get("session_id")
-    
+
+    if not session_id:
+        return Response({"error": "session_id is required"}, status=400)
+
+    try:
+        student = user.student
+    except Student.DoesNotExist:
+        return Response({"error": "Student profile not found"}, status=404)
+
     session = AttendanceSession.objects.filter(
-    id=session_id,
-    is_active=True
-).first()
-    
-    if request.user.is_anonymous:
-       return Response({"error": "Unauthorized"}, status=403)
-   
+        id=session_id,
+        is_active=True
+    ).first()
+
+    if not session:
+        return Response({"error": "Invalid or inactive session"}, status=404)
+
+    state = UserSessionState.objects.filter(user=user).first()
+
     if not state:
         return Response({"error": "No session state found"}, status=400)
 
-    if not session:
-       return Response({"error": "Invalid or inactive session"}, status=404)
-
-    state = UserSessionState.objects.filter(user=user).first()
-    
     from accounts.services import can_mark_attendance
 
-    allowed, message = can_mark_attendance(state) 
-
-    if not allowed:
-        return Response({"error": message}, status=403)
-    
-    # 🛡️ FINAL AUTH LOCK (FINGERPRINT + OTP CHECK)
-    if not state.fingerprint_verified and not state.otp_verified:
-       return Response({"error": "Authentication incomplete"}, status=403)
-    
-    # 🛡️ SECURITY LOCK (STATE ENGINE CHECK)
     allowed, message = can_mark_attendance(state)
 
     if not allowed:
         return Response({"error": message}, status=403)
 
-    if not state:
-        return Response({"error": "No session state"}, status=400)
+    attendance, created = Attendance.objects.get_or_create(
+        student=student,
+        session=session,
+        defaults={"status": "PRESENT"}
+    )
 
-    # 🛡️ ANTI-BYPASS CHECKS (VERY IMPORTANT)
-    if not state.device_verified:
-        return Response({"error": "Device not verified"}, status=403)
-
-    if not state.geofence_verified:
-        return Response({"error": "Not inside class area"}, status=403)
-
-    if state.current_state != "ATTENDANCE_GRANTED":
-        return Response({"error": "Fingerprint/OTP not completed"}, status=403)
-
-
-    # 🟢 FINAL SUCCESS
-    state.current_state = "ATTENDANCE_GRANTED"
-    state.save()
+    if not created:
+        return Response({"detail": "Already checked in"}, status=400)
 
     advance_user_state(user, "attendance_success")
-    
-    Attendance.objects.create(
-    student=request.user,
-    session_id=request.data.get("session_id"),  
-    status="PRESENT"
-)
 
     return Response({
-        "message": "Attendance marked successfully"
+        "message": "Attendance marked successfully",
+        "attendance_id": attendance.id,
+    }, status=201)
+
+
+@api_view(["GET"])
+@permission_classes([IsLecturer])
+def attendance_report(request):
+    sessions = AttendanceSession.objects.filter(
+        lecturer=request.user
+    ).order_by("-start_time")
+
+    data = []
+    for session in sessions:
+        records = Attendance.objects.filter(session=session)
+        total = records.count()
+        present = records.filter(status="PRESENT").count()
+        late = records.filter(status="LATE").count()
+        absent = records.filter(status="ABSENT").count()
+        data.append({
+            "session_id": session.id,
+            "course": session.course.name,
+            "subject": session.subject.name,
+            "date": session.date,
+            "is_active": session.is_active,
+            "total": total,
+            "present": present,
+            "late": late,
+            "absent": absent,
+            "percentage": round((present / total) * 100, 2) if total else 0,
+        })
+
+    return Response({"sessions": data})
+
+
+@api_view(["GET"])
+@permission_classes([IsLecturer])
+def session_report(request, session_id):
+    session = AttendanceSession.objects.filter(
+        id=session_id,
+        lecturer=request.user
+    ).first()
+
+    if not session:
+        return Response({"error": "Session not found"}, status=404)
+
+    records = Attendance.objects.filter(session=session).select_related("student")
+    return Response({
+        "session_id": session.id,
+        "course": session.course.name,
+        "subject": session.subject.name,
+        "date": session.date,
+        "records": [
+            {
+                "student_id": record.student.id,
+                "reg_number": record.student.reg_number,
+                "name": record.student.full_name,
+                "status": record.status,
+                "check_in_time": record.check_in_time,
+                "check_out_time": record.check_out_time,
+            }
+            for record in records
+        ],
     })
-    
-    
+
+
 def get_active_class():
     now = datetime.now()
 

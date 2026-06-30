@@ -39,11 +39,10 @@ urlpatterns = [
     path('api/auth/', include('accounts.urls'), name='accounts'),
     path('admin/', admin.site.urls,name='admin'),
     path('api/students/', include('students.urls'), name='students'),
-    path('api/', include("attendance.urls"), name='attendance'),
+    path('api/attendance/', include("attendance.urls"), name='attendance'),
     path('api/courses/', include('courses.urls'), name='courses'),
     path('api-auth/', include('rest_framework.urls'), name='rest_framework'),
     path('api/departments/', include('departments.urls'),name='departments'),
-    path('api/auth/', include('accounts.urls'),name='accounts'),
 
     path('api/auth/login/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),

@@ -30,7 +30,7 @@ class OTP(models.Model):
     purpose = models.CharField(max_length=30, choices=PURPOSE_CHOICES)
 
     created_at = models.DateTimeField(auto_now_add=True)
-    expires_at = models.DateTimeField()
+    expires_at = models.DateTimeField(null=True, blank=True)
 
     is_used = models.BooleanField(default=False)
 

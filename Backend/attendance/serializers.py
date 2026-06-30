@@ -18,20 +18,19 @@ class AttendanceSessionSerializer(serializers.ModelSerializer):
             'lecturer',
             'lecturer_name',
             'course',
+            'subject',
             'is_active',
             'start_time',
-            'duration_minutes',
             'latitude',
             'longitude',
             'radius_meters',
-            'allowed_wifi_ssid',
         ]
         read_only_fields = ['id', 'start_time']
 
 
 class AttendanceSerializer(serializers.ModelSerializer):
     student_name = serializers.CharField(
-        source='student.username',
+        source='student.full_name',
         read_only=True
     )
 

@@ -6,5 +6,4 @@ class StudentsConfig(AppConfig):
     name = 'students'
 
     def ready(self):
-        # safe for now (we removed signals)
-        pass
+     import students.signals

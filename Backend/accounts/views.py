@@ -9,6 +9,9 @@ from .services import advance_user_state
 from accounts.device_service import check_device
 import random
 from accounts.models import UserSessionState
+from django.contrib.auth import authenticate
+from rest_framework_simplejwt.tokens import RefreshToken
+from .serializers import UserSerializer
 
 from .models import UserDevice, OTP
 
@@ -23,6 +26,27 @@ def me(request):
     serializer = UserSerializer(request.user)
     return Response(serializer.data)
 
+
+@api_view(["POST"])
+def login(request):
+    username = request.data.get("username")
+    password = request.data.get("password")
+
+    user = authenticate(username=username, password=password)
+
+    if user:
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            "success": True,
+            "message": "Login successful",
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+        })
+
+    return Response({
+        "success": False,
+        "message": "Invalid credentials"
+    }, status=400)
 
 # -------------------------
 # REGISTER
@@ -54,16 +78,15 @@ def device_login(request):
     password = request.data.get("password")
     device_id = request.data.get("device_id")
 
-    print("USERNAME:", username)
-    print("PASSWORD:", password)
-    print("DEVICE:", device_id)
-
     user = User.objects.filter(username=username).first()
 
     if not user or not user.check_password(password):
         return Response({"error": "Invalid credentials"}, status=400)
 
-    # check verified device
+    if not device_id:
+        return Response({"error": "Device ID required"}, status=400)
+
+    # check if device already verified
     device = UserDevice.objects.filter(
         user=user,
         device_id=device_id,
@@ -72,24 +95,22 @@ def device_login(request):
 
     if device:
         advance_user_state(user, "device_success")
-
+        refresh = RefreshToken.for_user(user)
         return Response({
-            "message": "Login successful (device already verified)"
+            "message": "Login successful (device already verified)",
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "device_required": False,
         })
 
-    # generate OTP
-    code = str(random.randint(100000, 999999))
-    
-    if device_id:
-       device, created = UserDevice.objects.get_or_create(
+    # create or get device (NOT verified yet)
+    device, created = UserDevice.objects.get_or_create(
         user=user,
         device_id=device_id
     )
 
-    device.is_verified = True
-    device.save()
-
-    advance_user_state(user, "otp_success")
+    # generate OTP
+    code = str(random.randint(100000, 999999))
 
     OTP.objects.create(
         user=user,
@@ -98,8 +119,10 @@ def device_login(request):
         expires_at=timezone.now() + timedelta(minutes=5)
     )
 
+    advance_user_state(user, "otp_sent")
+
     return Response({
-        "message": "OTP generated and sent to user",
+        "message": "OTP generated and required for device verification",
         "device_required": True
     })
 
@@ -114,7 +137,9 @@ def generate_otp(request):
 
     OTP.objects.create(
         user=request.user,
-        code=otp_code
+        code=otp_code,
+        purpose="device_verification",
+        expires_at=timezone.now() + timedelta(minutes=5)
     )
 
     return Response({
@@ -188,6 +213,7 @@ def verify_otp(request):
 def verify_device_otp(request):
     username = request.data.get("username")
     otp_input = request.data.get("otp")
+    device_id = request.data.get("device_id")
 
     user = User.objects.filter(username=username).first()
 
@@ -202,13 +228,27 @@ def verify_device_otp(request):
     if str(otp_obj.code) != str(otp_input):
         return Response({"error": "Invalid OTP"}, status=400)
 
-    otp_obj.delete()
+    if otp_obj.is_expired():
+        otp_obj.delete()
+        return Response({"error": "OTP expired"}, status=400)
 
-    # ✅ STATE ENGINE HOOK (DEVICE OTP SUCCESS)
+    otp_obj.is_used = True
+    otp_obj.save()
+
+    if device_id:
+        UserDevice.objects.update_or_create(
+            user=user,
+            device_id=device_id,
+            defaults={"is_verified": True}
+        )
+
     advance_user_state(user, "device_success")
+    refresh = RefreshToken.for_user(user)
 
     return Response({
-        "message": "OTP verified successfully"
+        "message": "OTP verified successfully",
+        "access": str(refresh.access_token),
+        "refresh": str(refresh),
     })
 
 
@@ -248,3 +288,33 @@ def otp_fallback_verify(request):
     otp_obj.delete()
 
     return Response({"message": "OTP fallback verified"})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def fingerprint_verify(request):
+    success = request.data.get("success", True)
+    state, _ = UserSessionState.objects.get_or_create(user=request.user)
+
+    if success in [True, "true", "True", 1, "1"]:
+        advance_user_state(request.user, "fingerprint_success")
+        return Response({
+            "message": "Fingerprint verified",
+            "state": "ATTENDANCE_GRANTED",
+        })
+
+    state = advance_user_state(request.user, "fingerprint_fail")
+
+    if state.current_state == "OTP_REQUIRED":
+        OTP.objects.create(
+            user=request.user,
+            code=str(random.randint(100000, 999999)),
+            purpose="device_verification",
+            expires_at=timezone.now() + timedelta(minutes=5)
+        )
+
+    return Response({
+        "message": "Fingerprint failed",
+        "state": state.current_state,
+        "otp_required": state.current_state == "OTP_REQUIRED",
+    }, status=403)

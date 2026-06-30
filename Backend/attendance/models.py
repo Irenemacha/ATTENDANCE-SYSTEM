@@ -1,32 +1,21 @@
 from django.db import models
 from django.utils import timezone
-from django.conf import settings
-from django.contrib.auth import get_user_model
-
-
-
+from students.models import Student
 from courses.models import Course, Subject
+from django.conf import settings
 
 
 # =========================
-# 1. ATTENDANCE SESSION
+# ATTENDANCE SESSION
 # =========================
 class AttendanceSession(models.Model):
-    User = get_user_model()
     lecturer = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE
     )
 
-    course = models.ForeignKey(
-        Course,
-        on_delete=models.CASCADE
-    )
-
-    subject = models.ForeignKey(
-        Subject,
-        on_delete=models.CASCADE
-    )
+    course = models.ForeignKey(Course, on_delete=models.CASCADE)
+    subject = models.ForeignKey(Subject, on_delete=models.CASCADE)
 
     date = models.DateField(default=timezone.now)
     start_time = models.DateTimeField(auto_now_add=True)
@@ -44,7 +33,7 @@ class AttendanceSession(models.Model):
 
 
 # =========================
-# 2. ATTENDANCE (STUDENT CHECK-IN)
+# ATTENDANCE
 # =========================
 class Attendance(models.Model):
 
@@ -54,10 +43,10 @@ class Attendance(models.Model):
         ("ABSENT", "Absent"),
     ]
 
+    # 🔥 FIXED HERE
     student = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        limit_choices_to={'role': 'student'}
+        Student,
+        on_delete=models.CASCADE
     )
 
     session = models.ForeignKey(
@@ -65,7 +54,7 @@ class Attendance(models.Model):
         on_delete=models.CASCADE,
         null=True,
         blank=True
-)
+    )
 
     check_in_time = models.DateTimeField(auto_now_add=True)
     check_out_time = models.DateTimeField(null=True, blank=True)
@@ -77,8 +66,4 @@ class Attendance(models.Model):
     )
 
     def __str__(self):
-        return f"{self.student.username} - {self.session}"
-    
-
-
-
+        return f"{self.student.full_name} - {self.session}"
