@@ -1,4 +1,7 @@
 db.sqlite3
+__pycache__/
+**/__pycache__/
+*.py[cod]
 course/migrations/__pycache__/
 departments/migrations/__pycache__/
 students/migrations/__pycache__/

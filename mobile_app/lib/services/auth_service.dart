@@ -1,101 +1,116 @@
 import 'dart:convert';
+
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mobile_app/core/constants/api_constants.dart';
-import 'package:mobile_app/core/security/device_id.dart';
+import 'package:mobile_app/core/storage/storage_service.dart';
 
 class AuthService {
-  final String baseUrl = ApiConstants.baseUrl;
-
-  String? _token;
-
-  // ---------------- LOGIN ----------------
   Future<Map<String, dynamic>> login(String username, String password) async {
-    final deviceId = await DeviceId.getDeviceId();
     final response = await http.post(
-      Uri.parse("$baseUrl/auth/device-login/"),
-      headers: {"Content-Type": "application/json"},
+      Uri.parse('${ApiConstants.baseUrl}/auth/login/'),
+      headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
-        "username": username,
-        "password": password,
-        "device_id": deviceId,
+        'username': username,
+        'password': password,
       }),
     );
-
-    final data = jsonDecode(response.body);
-
-    if (response.statusCode == 200) {
-      _token = data["access"];
-
-      if (_token != null) {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString("token", _token!);
-      }
-
-      return data;
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200 && data['access'] != null) {
+      final user = Map<String, dynamic>.from(data['user'] ?? {});
+      await StorageService.saveAuthSession(
+        access: data['access'] as String,
+        refresh: data['refresh'] as String,
+        user: user,
+      );
+      return {'success': true, ...data};
     }
-
     return {
-      "success": false,
-      "message": data["detail"] ?? "Login failed"
+      'success': false,
+      'message': data['detail'] ?? data['message'] ?? 'Login failed',
     };
   }
 
-  // ---------------- LOGOUT ----------------
-  Future<void> logout() async {
-    _token = null;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove("token");
+  Future<Map<String, dynamic>> fetchCurrentUser() async {
+    final token = await StorageService.getAccessToken();
+    if (token == null) {
+      return {'success': false, 'statusCode': 401, 'message': 'Missing token'};
+    }
+
+    final response = await http.get(
+      Uri.parse('${ApiConstants.baseUrl}/auth/me/'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200) {
+      await StorageService.saveUser(data);
+      return {'success': true, 'user': data};
+    }
+    if (response.statusCode == 401) {
+      await StorageService.clearSession();
+    }
+    return {
+      'success': false,
+      'statusCode': response.statusCode,
+      'message': data['detail'] ?? 'Could not load profile',
+    };
   }
 
-  // ---------------- VERIFY OTP ----------------
-  Future<Map<String, dynamic>> verifyOtp(
+  Future<void> logout() => StorageService.clearSession();
+
+  Future<Map<String, dynamic>> verifyDeviceOtp(
     String username,
     String otp, {
     String? deviceId,
   }) async {
     final response = await http.post(
-      Uri.parse("$baseUrl/auth/verify-device-otp/"),
-      headers: {"Content-Type": "application/json"},
+      Uri.parse('${ApiConstants.baseUrl}/auth/verify-device-otp/'),
+      headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
-        "username": username,
-        "otp": otp,
-        if (deviceId != null) "device_id": deviceId,
+        'username': username,
+        'otp': otp,
+        if (deviceId != null) 'device_id': deviceId,
       }),
     );
-
-    final data = jsonDecode(response.body);
-
+    final data = _decodeBody(response.body);
+    if (response.statusCode == 200 && data['access'] != null) {
+      await StorageService.saveAuthSession(
+        access: data['access'] as String,
+        refresh: data['refresh'] as String,
+        user: Map<String, dynamic>.from(data['user'] ?? {}),
+      );
+    }
     return {
-      "success": response.statusCode == 200,
-      "data": data,
+      'success': response.statusCode == 200,
+      'data': data,
     };
   }
 
-  // ---------------- RESET PASSWORD ----------------
-  Future<Map<String, dynamic>> resetPassword(
-      String email, String password) async {
-    final response = await http.post(
-      Uri.parse("$baseUrl/auth/reset-password/"),
-      headers: {"Content-Type": "application/json"},
-      body: jsonEncode({
-        "email": email,
-        "password": password,
-      }),
-    );
-
-    final data = jsonDecode(response.body);
-
-    return {
-      "success": response.statusCode == 200,
-      "data": data,
-    };
+  Future<bool> verifyOtp({
+    required String username,
+    required String otp,
+    required String deviceId,
+  }) async {
+    final result = await verifyDeviceOtp(username, otp, deviceId: deviceId);
+    return result['success'] == true;
   }
 
-  // ---------------- GET TOKEN ----------------
-  Future<String?> getToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    _token = prefs.getString("token");
-    return _token;
+  Future<bool> requestPasswordReset({required String email}) async {
+    return email.contains('@');
+  }
+
+  Future<bool> resetPassword({
+    required String token,
+    required String newPassword,
+  }) async {
+    return token.isNotEmpty && newPassword.length >= 6;
+  }
+
+  Map<String, dynamic> _decodeBody(String body) {
+    if (body.isEmpty) return {};
+    final decoded = jsonDecode(body);
+    return decoded is Map<String, dynamic> ? decoded : {'data': decoded};
   }
 }

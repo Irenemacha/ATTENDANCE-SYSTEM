@@ -1,6 +1,5 @@
 from django.db import models
 from django.conf import settings
-user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
 from django.contrib.auth import get_user_model
 User = get_user_model()
 
@@ -41,11 +40,14 @@ class Subject(models.Model):
     
 
 class LecturerSubject(models.Model):
-    lecturer = models.ForeignKey(User, on_delete=models.CASCADE, limit_choices_to={'role': 'lecturer'})
+    lecturer = models.ForeignKey(User, on_delete=models.CASCADE)
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE)
 
     class Meta:
         unique_together = ('lecturer', 'subject')
+
+    def __str__(self):
+        return f"{self.lecturer.username} -> {self.subject.name}"
 
 
 # ========================
@@ -124,5 +126,4 @@ class Timetable(models.Model):
 
     def __str__(self):
         return f"{self.course} - {self.day} {self.start_time}"
-
 

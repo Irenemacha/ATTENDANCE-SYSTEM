@@ -47,7 +47,7 @@ def start_session(request):
     radius = request.data.get("radius")
 
     # 1. check lecturer-course assignment
-    if not LecturerCourse.objects.filter(
+    if not (user.is_staff or user.is_superuser) and not LecturerCourse.objects.filter(
         lecturer=user,
         course_id=course_id
     ).exists():
@@ -69,7 +69,7 @@ def start_session(request):
         )
 
     # 3. check lecturer-subject permission
-    if not LecturerSubject.objects.filter(
+    if not (user.is_staff or user.is_superuser) and not LecturerSubject.objects.filter(
         lecturer=user,
         subject=subject
     ).exists():
@@ -275,7 +275,7 @@ def lecturer_dashboard(request):
         "sessions": data
     })
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsStudent])
 def mark_attendance(request):
     user = request.user
     session_id = request.data.get("session_id")

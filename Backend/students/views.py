@@ -1,12 +1,12 @@
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from accounts.permissions import IsStudent
 from .models import Student
 from attendance.models import Attendance
 
 @api_view(["GET"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsStudent])
 def student_dashboard(request):
     user = request.user
 
@@ -16,12 +16,12 @@ def student_dashboard(request):
 
         total_present = Attendance.objects.filter(
             student=student,
-            status="present"
+            status="PRESENT"
         ).count()
 
         total_absent = Attendance.objects.filter(
             student=student,
-            status="absent"
+            status="ABSENT"
         ).count()
 
         total = total_present + total_absent
