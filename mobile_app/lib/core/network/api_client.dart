@@ -12,7 +12,7 @@ class ApiClient {
     final token = await TokenStorage.getAccessToken();
 
     final response = await http.get(
-      Uri.parse("$_baseUrl$endpoint"),
+      Uri.parse(_url(endpoint)),
       headers: {
         "Content-Type": "application/json",
         "Authorization": "Bearer $token",
@@ -30,7 +30,7 @@ class ApiClient {
     final token = await TokenStorage.getAccessToken();
 
     final response = await http.post(
-      Uri.parse("$_baseUrl$endpoint"),
+      Uri.parse(_url(endpoint)),
       headers: {
         "Content-Type": "application/json",
         "Authorization": "Bearer $token",
@@ -39,5 +39,10 @@ class ApiClient {
     );
 
     return response;
+  }
+
+  static String _url(String endpoint) {
+    final path = endpoint.startsWith('/') ? endpoint.substring(1) : endpoint;
+    return "$_baseUrl$path";
   }
 }

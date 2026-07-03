@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:mobile_app/core/storage/storage_service.dart';
 import 'package:mobile_app/features/attendance/presentation/screens/fingerprint_screen.dart';
 import 'package:mobile_app/features/auth/presentation/screens/login_screen.dart';
-import 'package:mobile_app/features/auth/presentation/screens/otp_screen.dart';
 import 'package:mobile_app/features/dashboard/presentation/screens/main_shell_screen.dart';
 
 void main() {
@@ -27,7 +26,6 @@ class MyApp extends StatelessWidget {
       home: const _StartupGate(),
       routes: {
         '/login': (context) => const LoginScreen(),
-        '/otp': (context) => const OtpScreen(),
         '/home': (context) => const MainShellScreen(),
         '/fingerprint': (context) {
           final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;

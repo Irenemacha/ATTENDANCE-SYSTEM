@@ -12,7 +12,7 @@ class AttendanceService {
   }) async {
     final token = await StorageService.getToken();
     final response = await http.post(
-      Uri.parse("${ApiConstants.baseUrl}/attendance/check-in/"),
+      Uri.parse("${ApiConstants.baseUrl}attendance/check-in/"),
       headers: {
         "Content-Type": "application/json",
         "Authorization": "Bearer $token",
@@ -35,7 +35,7 @@ class AttendanceService {
   Future<Map<String, dynamic>> verifyFingerprint({required bool success}) async {
     final token = await StorageService.getToken();
     final response = await http.post(
-      Uri.parse("${ApiConstants.baseUrl}/auth/fingerprint/verify/"),
+      Uri.parse("${ApiConstants.baseUrl}auth/fingerprint/verify/"),
       headers: {
         "Content-Type": "application/json",
         "Authorization": "Bearer $token",
@@ -54,7 +54,7 @@ class AttendanceService {
   Future<Map<String, dynamic>> markAttendance({required int sessionId}) async {
     final token = await StorageService.getToken();
     final response = await http.post(
-      Uri.parse("${ApiConstants.baseUrl}/attendance/mark/"),
+      Uri.parse("${ApiConstants.baseUrl}attendance/mark/"),
       headers: {
         "Content-Type": "application/json",
         "Authorization": "Bearer $token",

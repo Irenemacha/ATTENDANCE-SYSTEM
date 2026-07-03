@@ -1,8 +1,11 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { Shield, ShieldPlus } from "lucide-react";
 
 import { AdminShell } from "@/components/admin-shell";
+import { EmptyState } from "@/components/empty-state";
+import { LoadingSkeleton } from "@/components/loading-skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -15,6 +18,7 @@ export default function GroupsPage() {
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [name, setName] = useState("");
   const [selected, setSelected] = useState<Group | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     load();
@@ -24,6 +28,7 @@ export default function GroupsPage() {
   async function load() {
     const response = await api.get<Group[]>("/user-management/groups/");
     setGroups(response.data);
+    setLoading(false);
   }
 
   async function create(event: FormEvent) {
@@ -51,13 +56,13 @@ export default function GroupsPage() {
         <p className="text-muted-foreground">Manage Django Groups and permission assignments.</p>
       </div>
       <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
-        <Card>
+        <Card className="border-slate-200 shadow-sm">
           <CardContent className="pt-6">
             <form className="mb-4 flex gap-2" onSubmit={create}>
               <Input placeholder="New group name" value={name} onChange={(event) => setName(event.target.value)} />
-              <Button>Create</Button>
+              <Button><ShieldPlus className="h-4 w-4" /> Create</Button>
             </form>
-            <Table>
+            {loading ? <LoadingSkeleton className="h-72" /> : groups.length === 0 ? <EmptyState icon={Shield} title="No groups" description="Create Student, Lecturer, Admin, or HOD groups." /> : <Table>
               <thead>
                 <tr>
                   <Th>Name</Th>
@@ -72,13 +77,14 @@ export default function GroupsPage() {
                   </tr>
                 ))}
               </tbody>
-            </Table>
+            </Table>}
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-slate-200 shadow-sm">
           <CardContent className="pt-6">
             <h2 className="mb-3 text-lg font-semibold">{selected ? `${selected.name} permissions` : "Select a group"}</h2>
             <div className="grid max-h-[620px] gap-2 overflow-auto pr-2">
+              {!selected && <EmptyState icon={Shield} title="Select a group" description="Choose a group to assign Django permissions." />}
               {selected &&
                 permissions.map((permission) => (
                   <button

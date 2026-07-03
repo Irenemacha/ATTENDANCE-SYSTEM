@@ -1,9 +1,11 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { Pencil, Trash2, Users as UsersIcon } from "lucide-react";
+import { Pencil, Search, Trash2, UserPlus, Users as UsersIcon } from "lucide-react";
 
 import { AdminShell } from "@/components/admin-shell";
+import { EmptyState } from "@/components/empty-state";
+import { LoadingSkeleton } from "@/components/loading-skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -42,6 +44,7 @@ export default function UsersPage() {
   const [editing, setEditing] = useState<User | null>(null);
   const [form, setForm] = useState<UserForm>(emptyForm);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     load();
@@ -49,11 +52,13 @@ export default function UsersPage() {
   }, [page, search]);
 
   async function load() {
+    setLoading(true);
     const response = await api.get<{ count: number; results: User[] }>("/user-management/users/", {
       params: { page, search },
     });
     setUsers(response.data.results);
     setCount(response.data.count);
+    setLoading(false);
   }
 
   function openCreate() {
@@ -117,14 +122,22 @@ export default function UsersPage() {
           <h1 className="text-2xl font-semibold">Users</h1>
           <p className="text-muted-foreground">Manage auth users and Django Group assignments.</p>
         </div>
-        <Button onClick={openCreate}>Create user</Button>
+        <Button onClick={openCreate}><UserPlus className="h-4 w-4" /> Create user</Button>
       </div>
 
-      <Card>
+      <Card className="border-slate-200 shadow-sm">
         <CardContent className="pt-6">
-          <div className="mb-4 flex gap-3">
-            <Input placeholder="Search users" value={search} onChange={(event) => setSearch(event.target.value)} />
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input className="pl-9" placeholder="Search users" value={search} onChange={(event) => setSearch(event.target.value)} />
+            </div>
           </div>
+          {loading ? (
+            <LoadingSkeleton className="h-80" />
+          ) : users.length === 0 ? (
+            <EmptyState icon={UsersIcon} title="No users found" description="Create a user or adjust your search filters." />
+          ) : (
           <div className="overflow-x-auto">
             <Table>
               <thead>
@@ -181,6 +194,7 @@ export default function UsersPage() {
               </tbody>
             </Table>
           </div>
+          )}
           <div className="mt-4 flex items-center justify-between">
             <p className="text-sm text-muted-foreground">{count} users</p>
             <div className="flex gap-2">

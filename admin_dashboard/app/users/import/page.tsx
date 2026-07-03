@@ -4,6 +4,7 @@ import { ChangeEvent, useState } from "react";
 import { Upload } from "lucide-react";
 
 import { AdminShell } from "@/components/admin-shell";
+import { LoadingSkeleton } from "@/components/loading-skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -63,7 +64,7 @@ export default function ImportUsersPage() {
         <h1 className="text-2xl font-semibold">Import Users</h1>
         <p className="text-muted-foreground">Upload Excel users, preview validation, then commit.</p>
       </div>
-      <Card>
+      <Card className="border-slate-200 shadow-sm">
         <CardContent className="pt-6">
           <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center hover:bg-muted">
             <Upload className="mb-2 h-8 w-8" />
@@ -78,7 +79,7 @@ export default function ImportUsersPage() {
               }}
             />
           </label>
-          {loading && <p className="mt-4 text-sm text-muted-foreground">Working...</p>}
+          {loading && <LoadingSkeleton className="mt-4 h-24" />}
           {errors.length > 0 && <p className="mt-4 text-sm text-destructive">File validation errors were found.</p>}
           {rows.length > 0 && (
             <>
@@ -126,7 +127,14 @@ export default function ImportUsersPage() {
             </>
           )}
           {summary && (
-            <pre className="mt-6 overflow-auto rounded-md bg-muted p-4 text-sm">{JSON.stringify(summary, null, 2)}</pre>
+            <div className="mt-6 grid gap-3 rounded-2xl border bg-slate-50 p-4 sm:grid-cols-4">
+              {["created_count", "updated_count", "skipped_count"].map((key) => (
+                <div key={key} className="rounded-xl bg-white p-4 shadow-sm">
+                  <p className="text-xs uppercase text-muted-foreground">{key.replace("_", " ")}</p>
+                  <p className="text-2xl font-semibold">{String(summary[key] ?? 0)}</p>
+                </div>
+              ))}
+            </div>
           )}
         </CardContent>
       </Card>

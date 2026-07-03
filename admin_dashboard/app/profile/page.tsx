@@ -20,7 +20,7 @@ export default function ProfilePage() {
         <h1 className="text-2xl font-semibold">Profile</h1>
         <p className="text-muted-foreground">Current authenticated admin user.</p>
       </div>
-      <Card className="max-w-2xl">
+      <Card className="max-w-2xl border-slate-200 shadow-sm">
         <CardHeader>
           <CardTitle>{user?.full_name || user?.username || "Loading..."}</CardTitle>
         </CardHeader>

@@ -1,3 +1,3 @@
 class ApiConstants {
-  static const String baseUrl = "https://attendance-backend-uy75.onrender.com/api";
+  static const String baseUrl = "https://attendance.schoolsoft.online/api/";
 }

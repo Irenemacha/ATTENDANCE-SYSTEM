@@ -35,7 +35,7 @@ class _ForgotPasswordRequestState extends State<ForgotPasswordRequest> {
 
               setState(() => isLoading = false);
             },
-            child: const Text("Send OTP"),
+            child: const Text("Send reset link"),
           ),
         ],
       ),

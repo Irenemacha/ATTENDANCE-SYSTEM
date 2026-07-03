@@ -1,7 +1,6 @@
 import axios from "axios";
 
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000/api";
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://attendance.schoolsoft.online/api/";
 
 export type User = {
   id: number;
@@ -31,7 +30,9 @@ export type Permission = {
   model: string;
 };
 
-export const api = axios.create({ baseURL: API_BASE_URL });
+export const api = axios.create({
+  baseURL: API_BASE_URL.endsWith("/") ? API_BASE_URL : `${API_BASE_URL}/`,
+});
 
 api.interceptors.request.use((config) => {
   if (typeof window !== "undefined") {
@@ -54,6 +55,7 @@ export function getStoredUser(): User | null {
 }
 
 export function clearSession() {
+  if (typeof window === "undefined") return;
   localStorage.removeItem("access");
   localStorage.removeItem("refresh");
   localStorage.removeItem("user");

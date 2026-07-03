@@ -15,10 +15,19 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> loginUser() async {
     FocusScope.of(context).unfocus();
+    final username = usernameController.text.trim();
+    final password = passwordController.text.trim();
+    if (username.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter username and password')),
+      );
+      return;
+    }
+
     setState(() => isLoading = true);
     final result = await AuthService().login(
-      usernameController.text.trim(),
-      passwordController.text.trim(),
+      username,
+      password,
     );
     if (!mounted) return;
     setState(() => isLoading = false);
@@ -29,7 +38,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(result['message'] ?? 'Login failed')),
+      SnackBar(content: Text(result['message']?.toString() ?? 'Login failed')),
     );
   }
 

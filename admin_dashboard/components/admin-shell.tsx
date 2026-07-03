@@ -1,27 +1,18 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { ReactNode, useEffect, useState } from "react";
-import { BarChart3, FileSpreadsheet, LogOut, Shield, UserCircle, Users } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { LoadingSkeleton } from "@/components/loading-skeleton";
+import { Sidebar } from "@/components/sidebar";
+import { Topbar } from "@/components/topbar";
 import { api, clearSession, getStoredUser, User } from "@/lib/api";
-import { cn } from "@/lib/utils";
-
-const nav = [
-  { href: "/dashboard", label: "Dashboard", icon: BarChart3 },
-  { href: "/users", label: "Users", icon: Users },
-  { href: "/groups", label: "Groups", icon: Shield },
-  { href: "/users/import", label: "Import", icon: FileSpreadsheet },
-  { href: "/profile", label: "Profile", icon: UserCircle },
-];
 
 export function AdminShell({ children }: { children: ReactNode }) {
-  const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState<User | null>(getStoredUser());
   const [ready, setReady] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     api
@@ -43,47 +34,32 @@ export function AdminShell({ children }: { children: ReactNode }) {
   }, [router]);
 
   if (!ready) {
-    return <div className="flex min-h-screen items-center justify-center">Loading...</div>;
+    return (
+      <div className="min-h-screen bg-slate-50 p-6">
+        <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
+          <LoadingSkeleton className="hidden h-[calc(100vh-3rem)] lg:block" />
+          <div className="space-y-6">
+            <LoadingSkeleton className="h-16" />
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <LoadingSkeleton key={index} className="h-28" />
+              ))}
+            </div>
+            <LoadingSkeleton className="h-96" />
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[260px_1fr]">
-      <aside className="border-r bg-card p-4">
-        <div className="mb-6">
-          <p className="text-lg font-semibold">Attendance Admin</p>
-          <p className="text-sm text-muted-foreground">{user?.username}</p>
-        </div>
-        <nav className="grid gap-1">
-          {nav.map((item) => {
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-muted",
-                  pathname === item.href && "bg-muted font-medium",
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-        <Button
-          className="mt-6 w-full"
-          variant="outline"
-          onClick={() => {
-            clearSession();
-            router.replace("/login");
-          }}
-        >
-          <LogOut className="h-4 w-4" />
-          Logout
-        </Button>
-      </aside>
-      <main className="p-4 sm:p-6 lg:p-8">{children}</main>
+    <div className="min-h-screen bg-slate-50 lg:grid lg:grid-cols-[288px_1fr]">
+      {sidebarOpen && <button className="fixed inset-0 z-30 bg-black/30 lg:hidden" onClick={() => setSidebarOpen(false)} aria-label="Close navigation" />}
+      <Sidebar open={sidebarOpen} onNavigate={() => setSidebarOpen(false)} />
+      <div className="min-w-0">
+        <Topbar user={user} onMenu={() => setSidebarOpen(true)} />
+        <main className="p-4 sm:p-6 lg:p-8">{children}</main>
+      </div>
     </div>
   );
 }
