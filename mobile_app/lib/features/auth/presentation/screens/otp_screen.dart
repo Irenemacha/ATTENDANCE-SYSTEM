@@ -19,7 +19,7 @@ class _OtpScreenState extends State<OtpScreen> {
     try {
       final deviceId = await DeviceId.getDeviceId();
 
-      final success = await AuthService().verifyOtp(
+      final success = await AuthService().verifyDeviceOtp(
         username: username,
         otp: otp,
         deviceId: deviceId,
@@ -31,19 +31,15 @@ class _OtpScreenState extends State<OtpScreen> {
         Navigator.pushReplacementNamed(context, "/home");
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("OTP verification failed"),
-          ),
+          const SnackBar(content: Text("OTP verification failed")),
         );
       }
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("OTP verification failed: $e"),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("OTP verification failed: $e")));
     } finally {
       if (mounted) {
         setState(() => isLoading = false);
@@ -65,9 +61,7 @@ class _OtpScreenState extends State<OtpScreen> {
     final String username = args['username'];
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("OTP Verification"),
-      ),
+      appBar: AppBar(title: const Text("OTP Verification")),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -86,10 +80,7 @@ class _OtpScreenState extends State<OtpScreen> {
             ElevatedButton(
               onPressed: isLoading
                   ? null
-                  : () => verifyOtp(
-                        username,
-                        otpController.text.trim(),
-                      ),
+                  : () => verifyOtp(username, otpController.text.trim()),
               child: isLoading
                   ? const CircularProgressIndicator()
                   : const Text("Verify OTP"),

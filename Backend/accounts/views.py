@@ -2,6 +2,7 @@ import random
 import string
 from datetime import timedelta
 from io import BytesIO
+from django.core.mail import send_mail
 
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.models import Group, Permission
@@ -103,12 +104,14 @@ def me(request):
 @permission_classes([AllowAny])
 def device_login(request):
     username = request.data.get("username")
+    user = User.objects.get(username=username)
     password = request.data.get("password")
     device_id = request.data.get("device_id")
 
     user = User.objects.filter(username=username).first()
     if not user or not user.check_password(password):
         return Response({"error": "Invalid credentials"}, status=400)
+
     if not device_id:
         return Response({"error": "Device ID required"}, status=400)
 
@@ -117,9 +120,14 @@ def device_login(request):
         device_id=device_id,
         is_verified=True,
     ).first()
+
+    # ==========================
+    # DEVICE ALREADY VERIFIED
+    # ==========================
     if device:
         advance_user_state(user, "device_success")
         refresh = RefreshToken.for_user(user)
+
         return Response({
             "message": "Login successful (device already verified)",
             "access": str(refresh.access_token),
@@ -128,68 +136,135 @@ def device_login(request):
             "device_required": False,
         })
 
+    # ==========================
+    # CREATE DEVICE ENTRY
+    # ==========================
     UserDevice.objects.get_or_create(user=user, device_id=device_id)
-    OTP.objects.create(
+
+    # ==========================
+    # OTP GENERATION
+    otp_code = str(random.randint(100000, 999999))
+
+    otp_obj = OTP.objects.create(
         user=user,
-        code=str(random.randint(100000, 999999)),
+        code=otp_code,
         purpose="device_verification",
         expires_at=timezone.now() + timedelta(minutes=5),
+   )
+
+    print("DEBUG OTP:", otp_obj.code)
+    print("EMAIL:", user.email)
+
+    print("ABOUT TO SEND OTP EMAIL")
+
+    send_mail(
+        subject="Your OTP Code",
+        message=f"Your OTP is {otp_code}. It expires in 5 minutes.",
+        from_email="irenemagige548@gmail.com",
+        recipient_list=[user.email],
+        fail_silently=False,
     )
+
+    print("OTP EMAIL SENT")
+    # ==========================
+    # DEBUG PRINTS (IMPORTANT)
+    # ==========================
+    print("====================================")
+    print("DEVICE LOGIN HIT")
+    print("OTP GENERATED:", otp_obj.code)
+    print("DEVICE ID:", device_id)
+    print("====================================")
+
     advance_user_state(user, "otp_sent")
+
+    # ==========================
+    # RESPONSE (FIXED)
+    # ==========================
     return Response({
+        "success": True,
         "message": "OTP generated and required for device verification",
         "device_required": True,
+        "demoOtp": otp_obj.code,
     })
 
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def generate_otp(request):
-    OTP.objects.create(
+    print("ABOUT TO GENERATE OTP")
+    otp_obj = OTP.objects.create(
         user=request.user,
         code=str(random.randint(100000, 999999)),
         purpose="device_verification",
         expires_at=timezone.now() + timedelta(minutes=5),
     )
-    return Response({"message": "OTP generated"})
+    print("OTP GENERATED (device_login):", otp_obj.code)
+    return Response({"message": "OTP generated", "device_required": True, "demoOtp": otp_obj.code})
+
+
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def verify_otp(request):
+    username = request.data.get("username")
     otp_input = request.data.get("otp")
     device_id = request.data.get("device_id")
+
+    if not username:
+        return Response({"error": "Username is required"}, status=400)
+
     if not otp_input:
         return Response({"error": "OTP is required"}, status=400)
 
-    otp_obj = OTP.objects.filter(user=request.user).order_by("-id").first()
+    user = User.objects.filter(username=username).first()
+    print("USER FOUND:", user is not None)
+
+    if user:
+        print("USER EMAIL:", user.email)
+    if not user:
+        return Response({"error": "User not found"}, status=400)
+
+    # ALWAYS get latest OTP for this user ONLY
+    otp_obj = OTP.objects.filter(user=user).order_by("-id").first()
+
     if not otp_obj:
         return Response({"error": "No OTP found"}, status=400)
+
     if otp_obj.is_expired():
-        otp_obj.delete()
         return Response({"error": "OTP expired"}, status=400)
+
     if otp_obj.is_used:
         return Response({"error": "OTP already used"}, status=400)
+
     if str(otp_obj.code) != str(otp_input):
         return Response({"error": "Invalid OTP"}, status=400)
 
     otp_obj.is_used = True
     otp_obj.save(update_fields=["is_used"])
-    state, _ = UserSessionState.objects.get_or_create(user=request.user)
+
+    state, _ = UserSessionState.objects.get_or_create(user=user)
     state.otp_verified = True
     state.current_state = "ATTENDANCE_GRANTED"
     state.save()
 
     if device_id:
         UserDevice.objects.update_or_create(
-            user=request.user,
+            user=user,
             device_id=device_id,
             defaults={"is_verified": True},
         )
-    advance_user_state(request.user, "otp_success")
-    return Response({"message": "OTP verified successfully", "state": state.current_state})
 
+    advance_user_state(user, "otp_success")
 
+    refresh = RefreshToken.for_user(user)
+
+    return Response({
+        "message": "OTP verified successfully",
+        "access": str(refresh.access_token),
+        "refresh": str(refresh),
+    })
+    
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def verify_device_otp(request):

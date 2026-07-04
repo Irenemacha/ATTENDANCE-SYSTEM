@@ -32,7 +32,9 @@ class AttendanceService {
     };
   }
 
-  Future<Map<String, dynamic>> verifyFingerprint({required bool success}) async {
+  Future<Map<String, dynamic>> verifyFingerprint({
+    required bool success,
+  }) async {
     final token = await StorageService.getToken();
     final response = await http.post(
       Uri.parse("${ApiConstants.baseUrl}auth/fingerprint/verify/"),
@@ -41,6 +43,25 @@ class AttendanceService {
         "Authorization": "Bearer $token",
       },
       body: jsonEncode({"success": success}),
+    );
+
+    final body = jsonDecode(response.body);
+    return {
+      "success": response.statusCode >= 200 && response.statusCode < 300,
+      "statusCode": response.statusCode,
+      "data": body,
+    };
+  }
+
+  Future<Map<String, dynamic>> checkOut({required int sessionId}) async {
+    final token = await StorageService.getToken();
+    final response = await http.post(
+      Uri.parse("${ApiConstants.baseUrl}attendance/check-out/"),
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $token",
+      },
+      body: jsonEncode({"session_id": sessionId}),
     );
 
     final body = jsonDecode(response.body);

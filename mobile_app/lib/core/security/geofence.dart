@@ -30,7 +30,15 @@ class Geofence {
   static double _degToRad(double deg) => deg * (pi / 180);
 
   static bool isInside(double lat, double lng) {
+    return isInsideWithRadius(lat, lng, radiusMeters: allowedRadiusMeters);
+  }
+
+  static bool isInsideWithRadius(double lat, double lng, {double radiusMeters = allowedRadiusMeters}) {
     final distance = _distance(lat, lng, classroomLat, classroomLng);
-    return distance <= allowedRadiusMeters;
+    return distance <= radiusMeters;
+  }
+
+  static double distanceToCenter(double lat, double lng) {
+    return _distance(lat, lng, classroomLat, classroomLng);
   }
 }
