@@ -319,7 +319,7 @@ class _HeaderCard extends StatelessWidget {
           children: [
             CircleAvatar(
               radius: 28,
-              backgroundColor: _green.withOpacity(0.16),
+              backgroundColor: _green.withValues(alpha:0.16),
               child: Icon(icon, color: _darkGreen),
             ),
             const SizedBox(width: 14),

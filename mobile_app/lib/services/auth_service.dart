@@ -94,4 +94,32 @@ class AuthService {
     }
     return fallback;
   }
+
+  
+  final String baseUrl = "http://attendance.schoolsoft.online/api/";
+
+  Future<bool> verifyOtp({
+    required String username,
+    required String otp,
+    required String deviceId,
+  }) async {
+    final url = Uri.parse("$baseUrl/auth/verify-otp");
+
+    final response = await http.post(
+      url,
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({
+        "username": username,
+        "otp": otp,
+        "deviceId": deviceId,
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return data["success"] == true;
+    }
+
+    return false;
+  }
 }

@@ -1,81 +1,105 @@
 import 'package:flutter/material.dart';
-import '../../../../../core/network/auth_service.dart';
-import 'reset_password.dart';
+import 'package:mobile_app/core/security/device_id.dart';
+import 'package:mobile_app/services/auth_service.dart';
 
 class OtpVerificationScreen extends StatefulWidget {
-  final String username;
-  final String deviceId;
-
-  const OtpVerificationScreen({
-    super.key,
-    required this.username,
-    required this.deviceId,
-  });
+  const OtpVerificationScreen({super.key});
 
   @override
   State<OtpVerificationScreen> createState() => _OtpVerificationScreenState();
 }
 
 class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
-  final otpController = TextEditingController();
+  final TextEditingController otpController = TextEditingController();
   bool isLoading = false;
 
-  Future<void> verifyOtp() async {
+  Future<void> verifyOtp(String username) async {
     final otp = otpController.text.trim();
 
-    if (otp.isEmpty) return;
+    if (otp.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please enter OTP")),
+      );
+      return;
+    }
 
     setState(() => isLoading = true);
 
-    final result = await AuthService().verifyOtp(
-      username: widget.username,
-      otp: otp,
-      deviceId: widget.deviceId,
-    );
+    try {
+      final deviceId = await DeviceId.getDeviceId();
 
-    setState(() => isLoading = false);
+      final success = await AuthService().verifyOtp(
+        username: username,
+        otp: otp,
+        deviceId: deviceId,
+      );
 
-    if (result) {
       if (!mounted) return;
 
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ResetPasswordScreen(
-            username: widget.username,
-            otp: otp,
-            deviceId: widget.deviceId,
-          ),
-        ),
-      );
-    } else {
+      if (success) {
+        Navigator.of(context).pushReplacementNamed("/home");
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Invalid or expired OTP")),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Invalid OTP")),
+        SnackBar(content: Text("OTP error: $e")),
       );
+    } finally {
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
     }
   }
 
   @override
+  void dispose() {
+    otpController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final args =
+        ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
+
+    final String username = args['username'];
+
     return Scaffold(
-      appBar: AppBar(title: const Text("Verify OTP")),
+      appBar: AppBar(
+        title: const Text("OTP Verification"),
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
+            Text("Enter OTP sent to $username"),
+            const SizedBox(height: 16),
+
             TextField(
               controller: otpController,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
-                labelText: "Enter OTP",
+                labelText: "OTP",
+                border: OutlineInputBorder(),
               ),
             ),
+
             const SizedBox(height: 20),
+
             ElevatedButton(
-              onPressed: isLoading ? null : verifyOtp,
+              onPressed: isLoading ? null : () => verifyOtp(username),
               child: isLoading
-                  ? const CircularProgressIndicator()
-                  : const Text("Verify"),
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text("Verify OTP"),
             ),
           ],
         ),
