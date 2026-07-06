@@ -41,7 +41,6 @@ class AuthService {
         'device_id': deviceId,
       }),
     );
-    
 
     final data = _decodeBody(response.body);
     if (response.statusCode == 200 && data['access'] != null) {
@@ -51,7 +50,12 @@ class AuthService {
         refresh: data['refresh']?.toString() ?? '',
         user: user,
       );
-      return {'success': true, 'user': user, 'device_required': false, 'raw': data};
+      return {
+        'success': true,
+        'user': user,
+        'device_required': false,
+        'raw': data,
+      };
     }
 
     if (response.statusCode == 200 && data['device_required'] == true) {
@@ -64,7 +68,7 @@ class AuthService {
         ),
         'otp_hint': _extractOtpHint(data),
         'demo_otp': _extractDemoOtp(data),
-        'raw': data, 
+        'raw': data,
       };
     }
 
@@ -72,7 +76,6 @@ class AuthService {
       'success': false,
       'message': _readableMessage(data, fallback: 'Login failed'),
     };
-    
   }
 
   Future<Map<String, dynamic>> fetchCurrentUser() async {
@@ -153,13 +156,46 @@ class AuthService {
   }
 
   String? _extractDemoOtp(Map<String, dynamic> data) {
-    final directOtp = data['demoOtp']?.toString() ?? data['demo_otp']?.toString();
+    final directOtp =
+        data['demoOtp']?.toString() ?? data['demo_otp']?.toString();
     if (directOtp != null && directOtp.isNotEmpty) return directOtp;
 
     final otp = data['otp']?.toString();
     if (otp != null && otp.isNotEmpty) return otp;
 
     return null;
+  }
+
+  Future<bool> verifyAttendanceOtp({
+    required String username,
+    required String otp,
+    required String deviceId,
+  }) async {
+    final response = await http.post(
+      _url('auth/verify-otp/'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'username': username,
+        'otp': otp,
+        'device_id': deviceId,
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      final data = _decodeBody(response.body);
+      if (data['access'] != null) {
+        final user = await StorageService.getUser() ?? <String, dynamic>{};
+        final existingRefresh = await StorageService.getRefreshToken();
+        await StorageService.saveAuthSession(
+          access: data['access'] as String,
+          refresh: data['refresh']?.toString() ?? existingRefresh ?? '',
+          user: user,
+        );
+      }
+      return true;
+    }
+
+    return false;
   }
 
   Future<bool> verifyDeviceOtp({

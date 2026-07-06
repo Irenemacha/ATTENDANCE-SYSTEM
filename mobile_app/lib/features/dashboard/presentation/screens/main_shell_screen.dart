@@ -1,14 +1,18 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:location/location.dart';
-import 'package:local_auth/local_auth.dart';
 import 'package:mobile_app/core/storage/storage_service.dart';
 import 'package:mobile_app/features/attendance/data/attendance_service.dart';
 import 'package:mobile_app/features/attendance/data/security_validation_service.dart';
+import 'package:mobile_app/features/dashboard/data/dashboard_service.dart';
 import 'package:mobile_app/services/auth_service.dart';
 
 const _primary = Color(0xFF2563EB);
 const _primaryDark = Color(0xFF0F172A);
 const _surface = Color(0xFFF8FAFC);
+
+enum AttendanceFlowState { notCheckedIn, checkedIn, checkedOut }
 
 class MainShellScreen extends StatefulWidget {
   const MainShellScreen({super.key});
@@ -17,49 +21,117 @@ class MainShellScreen extends StatefulWidget {
   State<MainShellScreen> createState() => _MainShellScreenState();
 }
 
-class _MainShellScreenState extends State<MainShellScreen> {
+class _MainShellScreenState extends State<MainShellScreen>
+    with WidgetsBindingObserver {
   int currentIndex = 0;
   bool isLoading = true;
-  Map<String, dynamic>? user;
-  final location = Location();
-  final attendanceService = AttendanceService();
-  final securityService = AttendanceSecurityService();
-  final LocalAuthentication _localAuth = LocalAuthentication();
-  AttendanceSecuritySnapshot? securitySnapshot;
   bool isSecurityLoading = false;
   bool fingerprintPassed = false;
   bool otpVerified = false;
-  bool isFingerprintLoading = false;
-  bool isOtpLoading = false;
-  final TextEditingController otpController = TextEditingController();
-  String? otpError;
+  int fingerprintAttempts = 0;
+  bool _routeArgsApplied = false;
+  Timer? _sessionTimer;
+
+  Map<String, dynamic>? user;
+  Map<String, dynamic>? activeSession;
+  Map<String, dynamic>? attendanceStats;
+  AttendanceFlowState attendanceState = AttendanceFlowState.notCheckedIn;
+  AttendanceSecuritySnapshot? securitySnapshot;
+
+  final location = Location();
+  final attendanceService = AttendanceService();
+  final dashboardService = DashboardService();
 
   @override
   void initState() {
     super.initState();
-    loadUser();
-    evaluateSecurity();
+    WidgetsBinding.instance.addObserver(this);
+    _loadInitialData();
+    _sessionTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      refreshSessionStatus(showSnack: false);
+    });
   }
 
   @override
   void dispose() {
-    otpController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    _sessionTimer?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      refreshSessionStatus(showSnack: false);
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_routeArgsApplied) return;
+    final args =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    if (args == null) return;
+
+    final attempts = args['fingerprintAttempts'];
+    if (args['fingerprintPassed'] == true ||
+        args['otpVerified'] == true ||
+        attempts is int) {
+      _routeArgsApplied = true;
+      setState(() {
+        if (args['fingerprintPassed'] == true) fingerprintPassed = true;
+        if (args['otpVerified'] == true) otpVerified = true;
+        if (attempts is int) fingerprintAttempts = attempts;
+      });
+    }
+  }
+
+  Future<void> _loadInitialData() async {
+    print("STEP 1: loadUser start");
+    await loadUser();
+    print("STEP 2: loadUser finished");
+
+    print("STEP 3: evaluateSecurity start");
+    await evaluateSecurity();
+    print("STEP 4: evaluateSecurity finished");
+
+    print("STEP 5: refreshSessionStatus start");
+    await refreshSessionStatus(showSnack: false);
+    print("STEP 6: refreshSessionStatus finished");
+
+    print("STEP 7: loadAttendanceStats start");
+    await loadAttendanceStats();
+    print("STEP 8: loadAttendanceStats finished");
+
+    print("STEP 9: setting isLoading false");
+
+    if (mounted) {
+    setState(() => isLoading = false);
+    }
   }
 
   Future<void> loadUser() async {
     final result = await AuthService().fetchCurrentUser();
     if (!mounted) return;
     if (result['success'] == true) {
-      setState(() {
-        user = Map<String, dynamic>.from(result['user']);
-        isLoading = false;
-      });
+      setState(() => user = Map<String, dynamic>.from(result['user']));
       return;
     }
     await StorageService.clearSession();
     if (!mounted) return;
     Navigator.pushReplacementNamed(context, '/login');
+  }
+
+  Future<void> loadAttendanceStats() async {
+    final token = await StorageService.getAccessToken();
+    if (token == null) return;
+    final result = await dashboardService.getStudentDashboard(token);
+    if (!mounted) return;
+    final data = Map<String, dynamic>.from(result['data'] ?? {});
+    setState(() {
+      attendanceStats = Map<String, dynamic>.from(data['data'] ?? data);
+    });
   }
 
   Future<void> evaluateSecurity() async {
@@ -74,240 +146,272 @@ class _MainShellScreenState extends State<MainShellScreen> {
     });
   }
 
-  Future<void> simulateFingerprintSuccess() async {
-    setState(() => isFingerprintLoading = true);
-    try {
-      final result = await securityService.verifyFingerprint(success: true);
-      if (!mounted) return;
-      final data = Map<String, dynamic>.from(result['data'] ?? {});
-      if (result['success'] == true) {
-        setState(() {
-          fingerprintPassed = true;
-          otpError = null;
-        });
-        _snack(data['message'] ?? 'Fingerprint verified');
-      } else {
-        throw Exception(
-          data['error'] ?? data['detail'] ?? 'Fingerprint verification failed',
-        );
-      }
-    } catch (error) {
-      if (!mounted) return;
-      _snack(error.toString().replaceFirst('Exception: ', ''));
-    } finally {
-      if (mounted) {
-        setState(() => isFingerprintLoading = false);
-      }
-    }
-  }
+  Future<void> refreshSessionStatus({bool showSnack = true}) async {
+    final result = await attendanceService.getActiveSession();
+    if (!mounted) return;
 
-  Future<void> runFingerprintFlow() async {
-    if (securitySnapshot == null ||
-        !securitySnapshot!.gpsValid ||
-        !securitySnapshot!.timeWindowValid) {
-      _snack('GPS and time window must pass before fingerprint');
+    if (result['success'] != true) {
+      setState(() {
+        activeSession = null;
+        attendanceState = AttendanceFlowState.notCheckedIn;
+      });
+      if (showSnack) _snack('No active attendance session available');
       return;
     }
 
-    setState(() => isFingerprintLoading = true);
-    try {
-      final canAuthenticate =
-          await _localAuth.canCheckBiometrics ||
-          await _localAuth.isDeviceSupported();
-      if (!canAuthenticate) {
-        await simulateFingerprintSuccess();
-        return;
-      }
+    final data = Map<String, dynamic>.from(result['data'] ?? {});
+    final hasSession = data['session_id'] != null;
+    setState(() {
+      activeSession = hasSession ? data : null;
+      attendanceState = _parseAttendanceState(data['attendance_state']);
+    });
 
-      final authenticated = await _localAuth.authenticate(
-        localizedReason: 'Verify fingerprint to complete attendance',
-        options: const AuthenticationOptions(
-          biometricOnly: true,
-          stickyAuth: true,
-        ),
+    if (showSnack && !hasSession) {
+      _snack(
+        data['message']?.toString() ?? 'No active attendance session available',
       );
-
-      final result = await securityService.verifyFingerprint(
-        success: authenticated,
-      );
-      if (!mounted) return;
-      final data = Map<String, dynamic>.from(result['data'] ?? {});
-      if (result['success'] == true) {
-        setState(() {
-          fingerprintPassed = authenticated;
-          otpError = null;
-        });
-        _snack(data['message'] ?? 'Fingerprint verified');
-      } else {
-        setState(
-          () => otpError =
-              data['error'] ??
-              data['detail'] ??
-              'Fingerprint verification failed',
-        );
-        _snack(
-          data['error'] ?? data['detail'] ?? 'Fingerprint verification failed',
-        );
-      }
-    } catch (error) {
-      if (!mounted) return;
-      _snack(error.toString().replaceFirst('Exception: ', ''));
-    } finally {
-      if (mounted) {
-        setState(() => isFingerprintLoading = false);
-      }
     }
   }
 
-  Future<void> verifyOtpFallback() async {
-    if (user == null) return;
-    final otp = otpController.text.trim();
-    if (otp.isEmpty) {
-      setState(() => otpError = 'Please enter the OTP');
+  AttendanceFlowState _parseAttendanceState(dynamic value) {
+    switch (value?.toString()) {
+      case 'CHECKED_IN':
+        return AttendanceFlowState.checkedIn;
+      case 'CHECKED_OUT':
+        return AttendanceFlowState.checkedOut;
+      default:
+        return AttendanceFlowState.notCheckedIn;
+    }
+  }
+
+  int? get activeSessionId {
+    final raw = activeSession?['session_id'];
+    if (raw is int) return raw;
+    return int.tryParse(raw?.toString() ?? '');
+  }
+
+  bool get hasActiveSession =>
+      activeSessionId != null && activeSession?['is_active'] == true;
+  bool get hasOpenSessionForCheckout => activeSessionId != null;
+  bool get identityVerified => fingerprintPassed || otpVerified;
+
+  bool canCheckIn() {
+    final snapshot = securitySnapshot;
+    return snapshot != null &&
+        snapshot.gpsValid &&
+        snapshot.timeWindowValid &&
+        hasActiveSession &&
+        identityVerified &&
+        attendanceState == AttendanceFlowState.notCheckedIn;
+  }
+
+  bool canCheckOut() {
+    final snapshot = securitySnapshot;
+    return snapshot != null &&
+        snapshot.gpsValid &&
+        snapshot.timeWindowValid &&
+        hasOpenSessionForCheckout &&
+        identityVerified &&
+        attendanceState == AttendanceFlowState.checkedIn;
+  }
+
+  List<String> missingSecuritySteps({required bool forCheckout}) {
+    final snapshot = securitySnapshot;
+    final missing = <String>[];
+    if (snapshot == null) {
+      missing.add('GPS validation has not completed');
+      return missing;
+    }
+    if (!snapshot.gpsValid) {
+      missing.add('GPS/geofence validation');
+    }
+    if (!snapshot.timeWindowValid) {
+      missing.add('Valid attendance time window');
+    }
+    if (forCheckout) {
+      if (!hasOpenSessionForCheckout) {
+        missing.add('Active or open attendance session');
+      }
+    } else if (!hasActiveSession) {
+      missing.add('Active attendance session');
+    }
+    if (!identityVerified) {
+      missing.add('Fingerprint success or OTP fallback verification');
+    }
+    return missing;
+  }
+
+  Future<void> openFingerprintScan() async {
+    await refreshSessionStatus(showSnack: false);
+    if (!mounted) return;
+    if (!hasActiveSession && attendanceState != AttendanceFlowState.checkedIn) {
+      _snack('No active attendance session available');
       return;
     }
+    Navigator.pushReplacementNamed(
+      context,
+      '/fingerprint-scan',
+      arguments: {'fingerprintAttempts': fingerprintAttempts},
+    );
+  }
 
-    setState(() => isOtpLoading = true);
-    try {
-      final success = await securityService.verifyOtp(
-        username: user!['username'].toString(),
-        otp: otp,
-        deviceId: 'demo-device',
-      );
-      if (!mounted) return;
-      if (success) {
-        setState(() {
-          otpVerified = true;
-          otpError = null;
-        });
-        _snack('OTP verified successfully');
-      } else {
-        setState(() => otpError = 'OTP verification failed');
-        _snack('OTP verification failed');
-      }
-    } catch (error) {
-      if (!mounted) return;
-      _snack(error.toString().replaceFirst('Exception: ', ''));
-    } finally {
-      if (mounted) {
-        setState(() => isOtpLoading = false);
-      }
+  Future<LocationData> _currentLocation() async {
+    var enabled = await location.serviceEnabled();
+    if (!enabled) enabled = await location.requestService();
+    if (!enabled) throw Exception('Location service is disabled');
+
+    var permission = await location.hasPermission();
+    if (permission == PermissionStatus.denied) {
+      permission = await location.requestPermission();
     }
+    if (permission != PermissionStatus.granted) {
+      throw Exception('Location permission denied');
+    }
+    return location.getLocation();
   }
 
   Future<void> startCheckIn() async {
-    if (!canEnableAttendance()) {
-      _snack('Complete the security checks before attendance is allowed.');
+    await refreshSessionStatus(showSnack: false);
+    if (!canCheckIn()) {
+      await showSecurityDialog(forCheckout: false);
       return;
     }
 
-    final sessionId = await _askSessionId();
-    if (sessionId == null) return;
-
     try {
-      var enabled = await location.serviceEnabled();
-      if (!enabled) enabled = await location.requestService();
-      if (!enabled) throw Exception('Location service is disabled');
-
-      var permission = await location.hasPermission();
-      if (permission == PermissionStatus.denied) {
-        permission = await location.requestPermission();
-      }
-      if (permission != PermissionStatus.granted) {
-        throw Exception('Location permission denied');
-      }
-
-      final current = await location.getLocation();
+      final current = await _currentLocation();
       final latitude = current.latitude;
       final longitude = current.longitude;
-      if (latitude == null || longitude == null) {
-        throw Exception('Could not read current GPS location');
+      final sessionId = activeSessionId;
+      if (latitude == null || longitude == null || sessionId == null) {
+        throw Exception('Could not prepare attendance location/session');
       }
 
-      final result = await attendanceService.checkIn(
+      final checkInResult = await attendanceService.checkIn(
         sessionId: sessionId,
         latitude: latitude,
         longitude: longitude,
       );
       if (!mounted) return;
-      final data = Map<String, dynamic>.from(result['data']);
-      if (result['success'] == true) {
-        if (data['requires_fingerprint'] == true) {
-          _snack(
-            'Geo attend verified. Use the identity verification card to continue.',
-          );
-        } else {
-          _snack(data['message'] ?? 'Check-in successful');
-        }
-      } else if (result['statusCode'] == 401) {
-        await StorageService.clearSession();
-        if (!mounted) return;
-        Navigator.pushReplacementNamed(context, '/login');
+      if (checkInResult['success'] != true) {
+        final data = Map<String, dynamic>.from(checkInResult['data'] ?? {});
+        throw Exception(data['detail'] ?? data['error'] ?? 'Check-in failed');
+      }
+
+      if (fingerprintPassed) {
+        await attendanceService.verifyFingerprint(success: true);
+      }
+
+      final markResult = await attendanceService.markAttendance(
+        sessionId: sessionId,
+      );
+      if (!mounted) return;
+      if (markResult['success'] == true) {
+        _snack('Attendance recorded successfully.');
+        setState(() => attendanceState = AttendanceFlowState.checkedIn);
+        await Future.wait([
+          refreshSessionStatus(showSnack: false),
+          loadAttendanceStats(),
+        ]);
       } else {
-        throw Exception(data['error'] ?? data['detail'] ?? 'Check-in failed');
+        final data = Map<String, dynamic>.from(markResult['data'] ?? {});
+        throw Exception(data['detail'] ?? data['error'] ?? 'Attendance failed');
       }
     } catch (error) {
-      if (!mounted) return;
-      _snack(error.toString().replaceFirst('Exception: ', ''));
+      if (mounted) _snack(error.toString().replaceFirst('Exception: ', ''));
     }
-  }
-
-  bool canEnableAttendance() {
-    final snapshot = securitySnapshot;
-    return snapshot != null &&
-        snapshot.gpsValid &&
-        snapshot.timeWindowValid &&
-        (fingerprintPassed || otpVerified);
   }
 
   Future<void> startCheckOut() async {
-    if (!canEnableAttendance()) {
-      _snack('Complete the security checks before check out is allowed.');
+    await refreshSessionStatus(showSnack: false);
+    if (!canCheckOut()) {
+      await showSecurityDialog(forCheckout: true);
       return;
     }
 
-    final sessionId = await _askSessionId();
-    if (sessionId == null) return;
-
     try {
+      final sessionId = activeSessionId;
+      if (sessionId == null) {
+        throw Exception('No active attendance session available');
+      }
       final result = await attendanceService.checkOut(sessionId: sessionId);
       if (!mounted) return;
-      final data = Map<String, dynamic>.from(result['data'] ?? {});
       if (result['success'] == true) {
-        _snack(data['message'] ?? 'Check-out successful');
+        _snack('Check-out recorded successfully.');
+        setState(() => attendanceState = AttendanceFlowState.checkedOut);
+        await Future.wait([
+          refreshSessionStatus(showSnack: false),
+          loadAttendanceStats(),
+        ]);
       } else {
-        throw Exception(data['error'] ?? data['detail'] ?? 'Check-out failed');
+        final data = Map<String, dynamic>.from(result['data'] ?? {});
+        throw Exception(data['detail'] ?? data['error'] ?? 'Check-out failed');
       }
     } catch (error) {
-      if (!mounted) return;
-      _snack(error.toString().replaceFirst('Exception: ', ''));
+      if (mounted) _snack(error.toString().replaceFirst('Exception: ', ''));
     }
   }
 
-  Future<int?> _askSessionId() async {
-    final controller = TextEditingController();
-    return showDialog<int>(
+  Future<void> showSecurityDialog({required bool forCheckout}) async {
+    final missing = missingSecuritySteps(forCheckout: forCheckout);
+    await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Quick check-in'),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(labelText: 'Session ID'),
+        title: Text(
+          missing.isEmpty
+              ? 'Security checks complete'
+              : 'Security checks pending',
         ),
+        content: missing.isEmpty
+            ? const Text(
+                'All required checks passed. Attendance actions are enabled.',
+              )
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Complete these steps first:'),
+                  const SizedBox(height: 12),
+                  for (final step in missing)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.error_outline,
+                            color: Colors.orange,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(child: Text(step)),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: const Text('Close'),
           ),
-          FilledButton(
-            onPressed: () =>
-                Navigator.pop(context, int.tryParse(controller.text.trim())),
-            child: const Text('Continue'),
-          ),
+          if (!identityVerified && activeSessionId != null)
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(context);
+                openFingerprintScan();
+              },
+              child: const Text('Scan Fingerprint'),
+            ),
         ],
       ),
     );
+  }
+
+  Future<void> refreshAll() async {
+    await Future.wait([
+      evaluateSecurity(),
+      refreshSessionStatus(showSnack: false),
+      loadAttendanceStats(),
+    ]);
   }
 
   void _snack(String message) {
@@ -321,30 +425,30 @@ class _MainShellScreenState extends State<MainShellScreen> {
     final tabs = [
       HomeTab(
         user: user,
+        stats: attendanceStats,
         securitySnapshot: securitySnapshot,
-        isSecurityLoading: isSecurityLoading,
-        onRefreshSecurity: evaluateSecurity,
-        onFingerprint: runFingerprintFlow,
-        onSimulateFingerprint: simulateFingerprintSuccess,
-        onVerifyOtp: verifyOtpFallback,
-        otpController: otpController,
-        otpError: otpError,
+        activeSession: activeSession,
+        attendanceState: attendanceState,
         fingerprintPassed: fingerprintPassed,
         otpVerified: otpVerified,
-        isFingerprintLoading: isFingerprintLoading,
-        isOtpLoading: isOtpLoading,
-        canProceed: canEnableAttendance(),
+        canCheckIn: canCheckIn(),
+        canCheckOut: canCheckOut(),
+        isSecurityLoading: isSecurityLoading,
+        onRefresh: refreshAll,
+        onFingerprint: openFingerprintScan,
         onCheckIn: startCheckIn,
         onCheckOut: startCheckOut,
       ),
       AttendanceTab(
         onCheckIn: startCheckIn,
         onCheckOut: startCheckOut,
-        canProceed: canEnableAttendance(),
+        canCheckIn: canCheckIn(),
+        canCheckOut: canCheckOut(),
       ),
       const NotificationsTab(),
       ProfileTab(user: user, onRefresh: loadUser),
     ];
+
     return Scaffold(
       backgroundColor: _surface,
       appBar: AppBar(
@@ -359,8 +463,11 @@ class _MainShellScreenState extends State<MainShellScreen> {
       floatingActionButton: FloatingActionButton(
         backgroundColor: _primary,
         foregroundColor: Colors.white,
-        onPressed: startCheckIn,
-        child: const Icon(Icons.touch_app_outlined),
+        tooltip: 'Security status check',
+        onPressed: () => showSecurityDialog(
+          forCheckout: attendanceState == AttendanceFlowState.checkedIn,
+        ),
+        child: const Icon(Icons.security_outlined),
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: currentIndex,
@@ -395,59 +502,58 @@ class HomeTab extends StatelessWidget {
   const HomeTab({
     super.key,
     required this.user,
+    required this.stats,
     required this.securitySnapshot,
-    required this.isSecurityLoading,
-    required this.onRefreshSecurity,
-    required this.onFingerprint,
-    required this.onSimulateFingerprint,
-    required this.onVerifyOtp,
-    required this.otpController,
-    required this.otpError,
+    required this.activeSession,
+    required this.attendanceState,
     required this.fingerprintPassed,
     required this.otpVerified,
-    required this.isFingerprintLoading,
-    required this.isOtpLoading,
-    required this.canProceed,
+    required this.canCheckIn,
+    required this.canCheckOut,
+    required this.isSecurityLoading,
+    required this.onRefresh,
+    required this.onFingerprint,
     required this.onCheckIn,
     required this.onCheckOut,
   });
+
   final Map<String, dynamic>? user;
+  final Map<String, dynamic>? stats;
   final AttendanceSecuritySnapshot? securitySnapshot;
-  final bool isSecurityLoading;
-  final Future<void> Function() onRefreshSecurity;
-  final Future<void> Function() onFingerprint;
-  final Future<void> Function() onSimulateFingerprint;
-  final Future<void> Function() onVerifyOtp;
-  final TextEditingController otpController;
-  final String? otpError;
+  final Map<String, dynamic>? activeSession;
+  final AttendanceFlowState attendanceState;
   final bool fingerprintPassed;
   final bool otpVerified;
-  final bool isFingerprintLoading;
-  final bool isOtpLoading;
-  final bool canProceed;
+  final bool canCheckIn;
+  final bool canCheckOut;
+  final bool isSecurityLoading;
+  final Future<void> Function() onRefresh;
+  final Future<void> Function() onFingerprint;
   final VoidCallback onCheckIn;
   final VoidCallback onCheckOut;
 
   @override
   Widget build(BuildContext context) {
-    final name = _fullName(user);
-    final role = user?['role_display'] ?? 'not yet';
-    final sessionState = _sessionStatusLabel(securitySnapshot);
-    final sessionColor = _sessionStatusColor(sessionState);
+    final name = _fullName(user, stats);
+    final statusLabel = _sessionStatusLabel(activeSession);
+    final statusColor = _sessionStatusColor(statusLabel);
+    final attendancePercent = _asDouble(stats?['percentage']);
+    final attendanceStatus =
+        stats?['status']?.toString() ??
+        (attendancePercent >= 75 ? 'Fine' : 'Critical');
+    final attendanceColor = attendanceStatus == 'Fine'
+        ? Colors.green
+        : Colors.redAccent;
 
     return RefreshIndicator(
-      onRefresh: onRefreshSecurity,
+      onRefresh: onRefresh,
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [_primary, Color(0xFF0F172A)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
+              gradient: const LinearGradient(colors: [_primary, _primaryDark]),
               borderRadius: BorderRadius.circular(24),
             ),
             child: Column(
@@ -455,40 +561,19 @@ class HomeTab extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.18),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: const Icon(
-                        Icons.school_outlined,
-                        color: Colors.white,
-                      ),
+                    const CircleAvatar(
+                      backgroundColor: Colors.white24,
+                      child: Icon(Icons.school_outlined, color: Colors.white),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Hello, $name',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Role: $role • GeoAttend ready',
-                            style: const TextStyle(
-                              color: Color(0xFFE2E8F0),
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
+                      child: Text(
+                        'Hello, $name',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ],
@@ -499,16 +584,16 @@ class HomeTab extends StatelessWidget {
                     Expanded(
                       child: _SummaryTile(
                         label: 'Session',
-                        value: sessionState,
-                        accent: sessionColor,
+                        value: statusLabel,
+                        accent: statusColor,
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: _SummaryTile(
                         label: 'Attendance',
-                        value: canProceed ? 'Ready' : 'Pending',
-                        accent: canProceed ? Colors.green : Colors.amber,
+                        value: '${attendancePercent.toStringAsFixed(1)}%',
+                        accent: attendanceColor,
                       ),
                     ),
                   ],
@@ -517,6 +602,19 @@ class HomeTab extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
+          _AttendanceStatsCard(
+            stats: stats,
+            status: attendanceStatus,
+            color: attendanceColor,
+          ),
+          const SizedBox(height: 12),
+          _SessionCard(
+            session: activeSession,
+            statusLabel: statusLabel,
+            statusColor: statusColor,
+            attendanceState: attendanceState,
+          ),
+          const SizedBox(height: 12),
           _GeoAttendStatusCard(
             snapshot: securitySnapshot,
             isLoading: isSecurityLoading,
@@ -524,26 +622,17 @@ class HomeTab extends StatelessWidget {
           const SizedBox(height: 12),
           _ConnectivityStatusCard(snapshot: securitySnapshot),
           const SizedBox(height: 12),
-          _SessionStatusCard(snapshot: securitySnapshot),
-          const SizedBox(height: 12),
-          _TimeWindowCard(snapshot: securitySnapshot),
-          const SizedBox(height: 12),
           _IdentityVerificationCard(
             snapshot: securitySnapshot,
+            sessionAvailable: activeSession?['session_id'] != null,
+            verified: fingerprintPassed || otpVerified,
+            verifiedByOtp: otpVerified,
             onFingerprint: onFingerprint,
-            onSimulateFingerprint: onSimulateFingerprint,
-            onVerifyOtp: onVerifyOtp,
-            otpController: otpController,
-            otpError: otpError,
-            fingerprintPassed: fingerprintPassed,
-            otpVerified: otpVerified,
-            isFingerprintLoading: isFingerprintLoading,
-            isOtpLoading: isOtpLoading,
-            canProceed: canProceed,
           ),
           const SizedBox(height: 12),
           _AttendanceOverviewCard(
-            canProceed: canProceed,
+            canCheckIn: canCheckIn,
+            canCheckOut: canCheckOut,
             onCheckIn: onCheckIn,
             onCheckOut: onCheckOut,
           ),
@@ -558,26 +647,22 @@ class AttendanceTab extends StatelessWidget {
     super.key,
     required this.onCheckIn,
     required this.onCheckOut,
-    required this.canProceed,
+    required this.canCheckIn,
+    required this.canCheckOut,
   });
   final VoidCallback onCheckIn;
   final VoidCallback onCheckOut;
-  final bool canProceed;
+  final bool canCheckIn;
+  final bool canCheckOut;
 
   @override
   Widget build(BuildContext context) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _HeaderCard(
-          title: 'Attendance',
-          subtitle:
-              'Geo attend, verify identity, and complete check in or check out safely.',
-          icon: Icons.fact_check_outlined,
-        ),
-        const SizedBox(height: 12),
         _AttendanceOverviewCard(
-          canProceed: canProceed,
+          canCheckIn: canCheckIn,
+          canCheckOut: canCheckOut,
           onCheckIn: onCheckIn,
           onCheckOut: onCheckOut,
         ),
@@ -588,68 +673,87 @@ class AttendanceTab extends StatelessWidget {
 
 class NotificationsTab extends StatelessWidget {
   const NotificationsTab({super.key});
-
   @override
-  Widget build(BuildContext context) {
-    return const Center(
-      child: _InfoTile(
-        icon: Icons.notifications_none,
-        title: 'No notifications',
-        subtitle: 'Updates from your classes will appear here.',
-      ),
-    );
-  }
+  Widget build(BuildContext context) =>
+      const Center(child: Text('No notifications'));
 }
 
 class ProfileTab extends StatelessWidget {
   const ProfileTab({super.key, required this.user, required this.onRefresh});
   final Map<String, dynamic>? user;
   final Future<void> Function() onRefresh;
+  @override
+  Widget build(BuildContext context) => ListView(
+    padding: const EdgeInsets.all(16),
+    children: [
+      _GlassCard(
+        title: 'Profile',
+        icon: Icons.person_outline,
+        accent: _primary,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _fullName(user, null),
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Text(user?['email']?.toString() ?? ''),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: onRefresh,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Refresh profile'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () async {
+                await AuthService().logout();
+                if (context.mounted) {
+                  Navigator.pushReplacementNamed(context, '/login');
+                }
+              },
+              icon: const Icon(Icons.logout),
+              label: const Text('Logout'),
+            ),
+          ],
+        ),
+      ),
+    ],
+  );
+}
 
+class _AttendanceStatsCard extends StatelessWidget {
+  const _AttendanceStatsCard({
+    required this.stats,
+    required this.status,
+    required this.color,
+  });
+  final Map<String, dynamic>? stats;
+  final String status;
+  final Color color;
   @override
   Widget build(BuildContext context) {
-    final groups = List<String>.from(user?['groups'] ?? const []);
-    final profile = Map<String, dynamic>.from(
-      user?['profile'] ?? {'profile_type': 'not yet'},
-    );
-    return RefreshIndicator(
-      onRefresh: onRefresh,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
+    return _GlassCard(
+      title: 'Attendance Status',
+      icon: Icons.bar_chart_outlined,
+      accent: color,
+      child: Column(
         children: [
-          _HeaderCard(
-            title: _fullName(user),
-            subtitle: user?['email']?.toString().isNotEmpty == true
-                ? user!['email']
-                : 'No email',
-            icon: Icons.person,
+          _MetricRow(
+            label: 'Attendance Percentage',
+            value: '${_asDouble(stats?['percentage']).toStringAsFixed(1)}%',
+            valueColor: color,
           ),
-          const SizedBox(height: 12),
-          _InfoTile(
-            icon: Icons.alternate_email,
-            title: 'Username',
-            subtitle: user?['username'] ?? '',
+          _MetricRow(label: 'Status', value: status, valueColor: color),
+          _MetricRow(
+            label: 'Total Sessions',
+            value: (stats?['total_sessions'] ?? 0).toString(),
           ),
-          _InfoTile(
-            icon: Icons.badge_outlined,
-            title: 'Role',
-            subtitle: user?['role_display'] ?? 'not yet',
-          ),
-          _InfoTile(
-            icon: Icons.group_outlined,
-            title: 'Groups',
-            subtitle: groups.isEmpty ? 'not yet' : groups.join(', '),
-          ),
-          _ProfileDetails(profile: profile),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: () async {
-              await AuthService().logout();
-              if (!context.mounted) return;
-              Navigator.pushReplacementNamed(context, '/login');
-            },
-            icon: const Icon(Icons.logout),
-            label: const Text('Logout'),
+          _MetricRow(
+            label: 'Attended Sessions',
+            value: (stats?['attended_sessions'] ?? stats?['present'] ?? 0)
+                .toString(),
           ),
         ],
       ),
@@ -657,42 +761,46 @@ class ProfileTab extends StatelessWidget {
   }
 }
 
-class _ProfileDetails extends StatelessWidget {
-  const _ProfileDetails({required this.profile});
-  final Map<String, dynamic> profile;
-
+class _SessionCard extends StatelessWidget {
+  const _SessionCard({
+    required this.session,
+    required this.statusLabel,
+    required this.statusColor,
+    required this.attendanceState,
+  });
+  final Map<String, dynamic>? session;
+  final String statusLabel;
+  final Color statusColor;
+  final AttendanceFlowState attendanceState;
   @override
   Widget build(BuildContext context) {
-    if (profile['profile_type'] == 'not yet') {
-      return const _InfoTile(
-        icon: Icons.info_outline,
-        title: 'Profile',
-        subtitle: 'Profile not yet completed',
-      );
-    }
-    return Column(
-      children: [
-        _InfoTile(
-          icon: Icons.confirmation_number_outlined,
-          title: 'Reg number',
-          subtitle: profile['reg_number'] ?? '',
-        ),
-        _InfoTile(
-          icon: Icons.school_outlined,
-          title: 'Course',
-          subtitle: profile['course'] ?? '',
-        ),
-        _InfoTile(
-          icon: Icons.timeline_outlined,
-          title: 'Year of study',
-          subtitle: '${profile['year_of_study'] ?? ''}',
-        ),
-        _InfoTile(
-          icon: Icons.phone_outlined,
-          title: 'Phone',
-          subtitle: profile['phone_number'] ?? 'Not provided',
-        ),
-      ],
+    return _GlassCard(
+      title: 'Session Status',
+      icon: Icons.event_available_outlined,
+      accent: statusColor,
+      child: Column(
+        children: [
+          _MetricRow(
+            label: 'Current session',
+            value: statusLabel,
+            valueColor: statusColor,
+          ),
+          _MetricRow(
+            label: 'Subject',
+            value:
+                session?['subject']?.toString() ??
+                'No active attendance session available',
+          ),
+          _MetricRow(
+            label: 'Course',
+            value: session?['course']?.toString() ?? '-',
+          ),
+          _MetricRow(
+            label: 'Your state',
+            value: _attendanceStateLabel(attendanceState),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -701,51 +809,33 @@ class _GeoAttendStatusCard extends StatelessWidget {
   const _GeoAttendStatusCard({required this.snapshot, required this.isLoading});
   final AttendanceSecuritySnapshot? snapshot;
   final bool isLoading;
-
   @override
   Widget build(BuildContext context) {
-    final isValid = snapshot?.gpsValid == true;
-    final color = isValid
-        ? Colors.green
-        : (snapshot == null ? Colors.orange : Colors.redAccent);
+    final valid = snapshot?.gpsValid == true;
     return _GlassCard(
       title: 'Geo Attend Status',
       icon: Icons.location_on_outlined,
-      accent: color,
+      accent: valid ? Colors.green : Colors.orange,
       child: isLoading
-          ? const LinearProgressIndicator(minHeight: 3)
+          ? const Center(child: CircularProgressIndicator())
           : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _MetricRow(
-                  label: 'Status',
-                  value: snapshot == null
-                      ? 'Checking...'
-                      : (isValid ? 'Inside geofence' : 'Outside geofence'),
-                  valueColor: color,
-                ),
-                _MetricRow(
                   label: 'Coordinates',
-                  value: snapshot == null
-                      ? '--'
-                      : '${snapshot!.latitude.toStringAsFixed(4)}, ${snapshot!.longitude.toStringAsFixed(4)}',
-                ),
-                _MetricRow(
-                  label: 'Distance',
-                  value: snapshot == null
-                      ? '--'
-                      : '${snapshot!.distanceMeters.toStringAsFixed(1)} m',
+                  value:
+                      '${snapshot?.latitude.toStringAsFixed(5) ?? '-'}, ${snapshot?.longitude.toStringAsFixed(5) ?? '-'}',
                 ),
                 _MetricRow(
                   label: 'Radius',
-                  value: snapshot == null
-                      ? '--'
-                      : '${snapshot!.radiusMeters.toStringAsFixed(0)} m',
+                  value:
+                      '${snapshot?.radiusMeters.toStringAsFixed(0) ?? '-'} m',
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  snapshot?.gpsMessage ?? 'Waiting for location validation',
-                  style: const TextStyle(color: Color(0xFF58706A)),
+                _MetricRow(
+                  label: 'Geofence status',
+                  value: valid
+                      ? 'Inside Geofence confirmed'
+                      : 'Outside geofence',
+                  valueColor: valid ? Colors.green : Colors.redAccent,
                 ),
               ],
             ),
@@ -756,85 +846,22 @@ class _GeoAttendStatusCard extends StatelessWidget {
 class _ConnectivityStatusCard extends StatelessWidget {
   const _ConnectivityStatusCard({required this.snapshot});
   final AttendanceSecuritySnapshot? snapshot;
-
   @override
   Widget build(BuildContext context) {
     return _GlassCard(
-      title: 'Connectivity',
+      title: 'Campus Network',
       icon: Icons.wifi_outlined,
-      accent: Colors.blue,
+      accent: Colors.green,
       child: Column(
         children: [
           _MetricRow(
             label: 'WiFi',
-            value: snapshot?.wifiLabel ?? 'Campus WiFi',
+            value: snapshot?.wifiLabel ?? 'Campus network',
           ),
           _MetricRow(
-            label: 'BLE',
-            value: snapshot?.bleStatus ?? 'Simulated mode',
-          ),
-          _MetricRow(
-            label: 'Beacon',
-            value: snapshot?.bleDetected == true ? 'Detected' : 'Not detected',
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SessionStatusCard extends StatelessWidget {
-  const _SessionStatusCard({required this.snapshot});
-  final AttendanceSecuritySnapshot? snapshot;
-
-  @override
-  Widget build(BuildContext context) {
-    final state = _sessionStatusLabel(snapshot);
-    final color = _sessionStatusColor(state);
-    return _GlassCard(
-      title: 'Session Status',
-      icon: Icons.event_available_outlined,
-      accent: color,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _MetricRow(label: 'State', value: state, valueColor: color),
-          Text(
-            snapshot?.timeWindowValid == true
-                ? 'Attendance window is currently open.'
-                : 'Session availability is currently restricted.',
-            style: const TextStyle(color: Color(0xFF58706A)),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TimeWindowCard extends StatelessWidget {
-  const _TimeWindowCard({required this.snapshot});
-  final AttendanceSecuritySnapshot? snapshot;
-
-  @override
-  Widget build(BuildContext context) {
-    final valid = snapshot?.timeWindowValid == true;
-    final color = valid ? Colors.green : Colors.orange;
-    return _GlassCard(
-      title: 'Time Window',
-      icon: Icons.access_time_outlined,
-      accent: color,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _MetricRow(label: 'Allowed range', value: '08:00 - 17:00'),
-          _MetricRow(
-            label: 'Current status',
-            value: valid ? 'Valid' : 'Expired / Not yet started',
-            valueColor: color,
-          ),
-          Text(
-            snapshot?.timeWindowMessage ?? 'Checking...',
-            style: const TextStyle(color: Color(0xFF58706A)),
+            label: 'Status',
+            value: snapshot?.wifiStatus ?? 'Trusted',
+            valueColor: Colors.green,
           ),
         ],
       ),
@@ -845,93 +872,66 @@ class _TimeWindowCard extends StatelessWidget {
 class _IdentityVerificationCard extends StatelessWidget {
   const _IdentityVerificationCard({
     required this.snapshot,
+    required this.sessionAvailable,
+    required this.verified,
+    required this.verifiedByOtp,
     required this.onFingerprint,
-    required this.onSimulateFingerprint,
-    required this.onVerifyOtp,
-    required this.otpController,
-    required this.otpError,
-    required this.fingerprintPassed,
-    required this.otpVerified,
-    required this.isFingerprintLoading,
-    required this.isOtpLoading,
-    required this.canProceed,
   });
-
   final AttendanceSecuritySnapshot? snapshot;
+  final bool sessionAvailable;
+  final bool verified;
+  final bool verifiedByOtp;
   final Future<void> Function() onFingerprint;
-  final Future<void> Function() onSimulateFingerprint;
-  final Future<void> Function() onVerifyOtp;
-  final TextEditingController otpController;
-  final String? otpError;
-  final bool fingerprintPassed;
-  final bool otpVerified;
-  final bool isFingerprintLoading;
-  final bool isOtpLoading;
-  final bool canProceed;
-
   @override
   Widget build(BuildContext context) {
-    final verified = fingerprintPassed || otpVerified;
-    final color = verified ? Colors.green : Colors.amber;
-    final enabled =
-        snapshot?.gpsValid == true && snapshot?.timeWindowValid == true;
-
+    final enabled = snapshot?.gpsValid == true && sessionAvailable && !verified;
     return _GlassCard(
-      title: 'Identity Verification',
+      title: 'Security Verification',
       icon: Icons.verified_user_outlined,
-      accent: color,
+      accent: verified ? Colors.green : Colors.amber,
       child: Column(
         children: [
           _MetricRow(
-            label: 'Status',
-            value: verified ? 'Verified' : 'Pending',
-            valueColor: color,
+            label: 'GPS',
+            value: snapshot?.gpsValid == true ? 'Confirmed' : 'Pending',
+            valueColor: snapshot?.gpsValid == true
+                ? Colors.green
+                : Colors.orange,
           ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: enabled && !isFingerprintLoading
-                      ? () => onFingerprint()
-                      : null,
-                  icon: const Icon(Icons.fingerprint),
-                  label: const Text('Fingerprint'),
-                ),
+          const _MetricRow(
+            label: 'WiFi',
+            value: 'Confirmed',
+            valueColor: Colors.green,
+          ),
+          _MetricRow(
+            label: 'Biometrics',
+            value: verified
+                ? (verifiedByOtp ? 'OTP verified' : 'Fingerprint verified')
+                : 'Pending',
+            valueColor: verified ? Colors.green : Colors.amber,
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: 128,
+            height: 128,
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: _primary,
+                foregroundColor: Colors.white,
+                shape: const CircleBorder(),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: enabled && !isFingerprintLoading
-                      ? () => onSimulateFingerprint()
-                      : null,
-                  icon: const Icon(Icons.auto_fix_high),
-                  label: const Text('Simulate success'),
-                ),
+              onPressed: enabled ? onFingerprint : null,
+              child: Icon(
+                verifiedByOtp ? Icons.sms_outlined : Icons.fingerprint,
+                size: 64,
               ),
-            ],
+            ),
           ),
           const SizedBox(height: 12),
-          TextField(
-            controller: otpController,
-            keyboardType: TextInputType.number,
-            decoration: InputDecoration(
-              labelText: 'OTP fallback',
-              hintText: 'Enter OTP for fallback',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              errorText: otpError,
-            ),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: enabled && !isOtpLoading ? () => onVerifyOtp() : null,
-              icon: const Icon(Icons.sms_outlined),
-              label: const Text('Verify OTP fallback'),
-            ),
+          FilledButton.icon(
+            onPressed: enabled ? onFingerprint : null,
+            icon: const Icon(Icons.fingerprint),
+            label: Text(verified ? 'Identity Verified' : 'Scan Fingerprint'),
           ),
         ],
       ),
@@ -941,47 +941,37 @@ class _IdentityVerificationCard extends StatelessWidget {
 
 class _AttendanceOverviewCard extends StatelessWidget {
   const _AttendanceOverviewCard({
-    required this.canProceed,
+    required this.canCheckIn,
+    required this.canCheckOut,
     required this.onCheckIn,
     required this.onCheckOut,
   });
-  final bool canProceed;
+  final bool canCheckIn;
+  final bool canCheckOut;
   final VoidCallback onCheckIn;
   final VoidCallback onCheckOut;
-
   @override
   Widget build(BuildContext context) {
     return _GlassCard(
       title: 'Attendance Actions',
       icon: Icons.touch_app_outlined,
       accent: _primary,
-      child: Column(
+      child: Row(
         children: [
-          Text(
-            canProceed
-                ? 'All validations are ready. You can proceed with geo attend actions.'
-                : 'Complete GPS, session, time, and identity checks before using the actions.',
-            style: const TextStyle(color: Color(0xFF58706A)),
+          Expanded(
+            child: FilledButton.icon(
+              onPressed: canCheckIn ? onCheckIn : null,
+              icon: const Icon(Icons.login),
+              label: const Text('Check In'),
+            ),
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: canProceed ? onCheckIn : null,
-                  icon: const Icon(Icons.my_location),
-                  label: const Text('Check In (geo attend)'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: canProceed ? onCheckOut : null,
-                  icon: const Icon(Icons.logout),
-                  label: const Text('Check Out'),
-                ),
-              ),
-            ],
+          const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: canCheckOut ? onCheckOut : null,
+              icon: const Icon(Icons.logout),
+              label: const Text('Check Out'),
+            ),
           ),
         ],
       ),
@@ -1000,7 +990,6 @@ class _GlassCard extends StatelessWidget {
   final IconData icon;
   final Color accent;
   final Widget child;
-
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -1014,12 +1003,8 @@ class _GlassCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: accent.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
+                CircleAvatar(
+                  backgroundColor: accent.withValues(alpha: 0.12),
                   child: Icon(icon, color: accent, size: 20),
                 ),
                 const SizedBox(width: 10),
@@ -1043,108 +1028,36 @@ class _GlassCard extends StatelessWidget {
   }
 }
 
-class _HeaderCard extends StatelessWidget {
-  const _HeaderCard({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-  });
-
-  final String title;
-  final String subtitle;
-  final IconData icon;
-
+class _MetricRow extends StatelessWidget {
+  const _MetricRow({required this.label, required this.value, this.valueColor});
+  final String label;
+  final String value;
+  final Color? valueColor;
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 0,
-      color: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 28,
-              backgroundColor: _primary.withValues(alpha: 0.14),
-              child: Icon(icon, color: _primary),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(color: Color(0xFF64748B)),
             ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(color: Color(0xFF58706A)),
-                  ),
-                ],
+          ),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: valueColor ?? const Color(0xFF0F172A),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
-  }
-}
-
-class _InfoTile extends StatelessWidget {
-  const _InfoTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      elevation: 0,
-      color: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: _surface,
-          child: Icon(icon, color: _primary),
-        ),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Text(subtitle),
-      ),
-    );
-  }
-}
-
-String _fullName(Map<String, dynamic>? user) {
-  final fullName = user?['full_name']?.toString() ?? '';
-  if (fullName.trim().isNotEmpty) return fullName;
-  return user?['username']?.toString() ?? 'User';
-}
-
-String _sessionStatusLabel(AttendanceSecuritySnapshot? snapshot) {
-  if (snapshot == null) return 'Session Not Started';
-  if (!snapshot.timeWindowValid) return 'Session Ended';
-  return 'Session Active';
-}
-
-Color _sessionStatusColor(String label) {
-  switch (label) {
-    case 'Session Active':
-      return Colors.green;
-    case 'Session Ended':
-      return Colors.redAccent;
-    default:
-      return Colors.orange;
   }
 }
 
@@ -1157,14 +1070,13 @@ class _SummaryTile extends StatelessWidget {
   final String label;
   final String value;
   final Color accent;
-
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(16),
+        color: Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1176,7 +1088,12 @@ class _SummaryTile extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             value,
-            style: TextStyle(color: accent, fontWeight: FontWeight.w700),
+            style: TextStyle(
+              color: accent == Colors.green
+                  ? const Color(0xFFBBF7D0)
+                  : Colors.white,
+              fontWeight: FontWeight.w800,
+            ),
           ),
         ],
       ),
@@ -1184,41 +1101,37 @@ class _SummaryTile extends StatelessWidget {
   }
 }
 
-class _MetricRow extends StatelessWidget {
-  const _MetricRow({required this.label, required this.value, this.valueColor});
-  final String label;
-  final String value;
-  final Color? valueColor;
+String _fullName(Map<String, dynamic>? user, Map<String, dynamic>? stats) {
+  final statName = stats?['name']?.toString() ?? '';
+  if (statName.trim().isNotEmpty) return statName;
+  final fullName = user?['full_name']?.toString() ?? '';
+  if (fullName.trim().isNotEmpty) return fullName;
+  return user?['username']?.toString() ?? 'User';
+}
 
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 86,
-            child: Text(
-              label,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF58706A),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              value,
-              style: TextStyle(
-                color: valueColor ?? const Color(0xFF1F2937),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+String _sessionStatusLabel(Map<String, dynamic>? session) {
+  if (session == null) return 'Session Not Started';
+  return session['is_active'] == true ? 'Session Active' : 'Session Ended';
+}
+
+Color _sessionStatusColor(String label) {
+  if (label == 'Session Active') return Colors.green;
+  if (label == 'Session Ended') return Colors.redAccent;
+  return Colors.orange;
+}
+
+String _attendanceStateLabel(AttendanceFlowState state) {
+  switch (state) {
+    case AttendanceFlowState.checkedIn:
+      return 'CHECKED_IN';
+    case AttendanceFlowState.checkedOut:
+      return 'CHECKED_OUT';
+    case AttendanceFlowState.notCheckedIn:
+      return 'NOT_CHECKED_IN';
   }
+}
+
+double _asDouble(dynamic value) {
+  if (value is num) return value.toDouble();
+  return double.tryParse(value?.toString() ?? '') ?? 0;
 }

@@ -50,8 +50,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (result['success'] == true) {
         if (result['device_required'] == true) {
-          final String? demoOtp =
-              (result['demo_otp'] ?? result['demoOtp'])?.toString();
+          final String? demoOtp = (result['demo_otp'] ?? result['demoOtp'])
+              ?.toString();
 
           Navigator.pushReplacementNamed(
             context,
@@ -78,9 +78,9 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (error) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.toString())),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
     } finally {
       if (mounted) {
         setState(() => isLoading = false);
@@ -159,7 +159,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         Align(
                           alignment: Alignment.centerRight,
                           child: TextButton(
-                            onPressed: () {},
+                            onPressed: () => Navigator.pushNamed(
+                              context,
+                              '/forgot-password',
+                            ),
                             child: const Text('Forgot password?'),
                           ),
                         ),
@@ -178,7 +181,9 @@ class _LoginScreenState extends State<LoginScreen> {
                               ? const SizedBox(
                                   width: 22,
                                   height: 22,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
                                 )
                               : const Text('Login'),
                         ),

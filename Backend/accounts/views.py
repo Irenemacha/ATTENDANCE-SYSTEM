@@ -109,11 +109,36 @@ def device_login(request):
     device_id = request.data.get("device_id")
 
     user = User.objects.filter(username=username).first()
+
+    print("========== LOGIN DEBUG ==========")
+    print("USERNAME RECEIVED:", username)
+    print("PASSWORD RECEIVED:", password)
+    print("USER FOUND:", user)
+
+    if user:
+        print("PASSWORD CHECK:", user.check_password(password))
+
     if not user or not user.check_password(password):
+        print("LOGIN FAILED HERE")
         return Response({"error": "Invalid credentials"}, status=400)
+
+    print("LOGIN PASSED PASSWORD CHECK")
 
     if not device_id:
         return Response({"error": "Device ID required"}, status=400)
+    
+    existing_device = UserDevice.objects.filter(
+    device_id=device_id
+).first()
+
+    if existing_device and existing_device.user != user:
+       return Response(
+        {
+            "success": False,
+            "message": "This device is already registered to another user."
+        },
+        status=400
+        )
 
     device = UserDevice.objects.filter(
         user=user,

@@ -5,6 +5,29 @@ import 'package:mobile_app/core/constants/api_constants.dart';
 import 'package:mobile_app/core/storage/storage_service.dart';
 
 class AttendanceService {
+  Map<String, dynamic> _decode(String body) {
+    if (body.isEmpty) return {};
+    final decoded = jsonDecode(body);
+    return decoded is Map<String, dynamic> ? decoded : {'data': decoded};
+  }
+
+  Future<Map<String, dynamic>> getActiveSession() async {
+    final token = await StorageService.getToken();
+    final response = await http.get(
+      Uri.parse("${ApiConstants.baseUrl}attendance/active-session/"),
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $token",
+      },
+    );
+
+    return {
+      "success": response.statusCode >= 200 && response.statusCode < 300,
+      "statusCode": response.statusCode,
+      "data": _decode(response.body),
+    };
+  }
+
   Future<Map<String, dynamic>> checkIn({
     required int sessionId,
     required double latitude,
@@ -24,11 +47,10 @@ class AttendanceService {
       }),
     );
 
-    final body = jsonDecode(response.body);
     return {
       "success": response.statusCode >= 200 && response.statusCode < 300,
       "statusCode": response.statusCode,
-      "data": body,
+      "data": _decode(response.body),
     };
   }
 
@@ -45,11 +67,10 @@ class AttendanceService {
       body: jsonEncode({"success": success}),
     );
 
-    final body = jsonDecode(response.body);
     return {
       "success": response.statusCode >= 200 && response.statusCode < 300,
       "statusCode": response.statusCode,
-      "data": body,
+      "data": _decode(response.body),
     };
   }
 
@@ -64,11 +85,10 @@ class AttendanceService {
       body: jsonEncode({"session_id": sessionId}),
     );
 
-    final body = jsonDecode(response.body);
     return {
       "success": response.statusCode >= 200 && response.statusCode < 300,
       "statusCode": response.statusCode,
-      "data": body,
+      "data": _decode(response.body),
     };
   }
 
@@ -83,11 +103,10 @@ class AttendanceService {
       body: jsonEncode({"session_id": sessionId}),
     );
 
-    final body = jsonDecode(response.body);
     return {
       "success": response.statusCode >= 200 && response.statusCode < 300,
       "statusCode": response.statusCode,
-      "data": body,
+      "data": _decode(response.body),
     };
   }
 }

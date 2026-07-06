@@ -5,7 +5,7 @@ import 'package:mobile_app/core/constants/api_constants.dart';
 import 'package:mobile_app/core/security/token_storage.dart';
 
 class ApiClient {
-  static const String _baseUrl = ApiConstants.baseUrl;
+  static final String _baseUrl = ApiConstants.baseUrl;
 
   // GET REQUEST
   static Future<http.Response> get(String endpoint) async {

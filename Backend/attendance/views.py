@@ -159,7 +159,10 @@ def check_in(request):
             status=400
         )
 
-    state.current_state = "FINGERPRINT_REQUIRED"
+    if state.fingerprint_verified or state.otp_verified:
+        state.current_state = "ATTENDANCE_GRANTED"
+    else:
+        state.current_state = "FINGERPRINT_REQUIRED"
     state.save()
 
     return Response({
@@ -386,6 +389,82 @@ def session_report(request, session_id):
     })
 
 
+# =========================
+# STUDENT ACTIVE SESSION
+# =========================
+@api_view(["GET"])
+@permission_classes([IsStudent])
+def active_session(request):
+    user = request.user
+
+    try:
+        student = user.student
+    except Student.DoesNotExist:
+        return Response({"active": False, "detail": "Student profile not found"}, status=404)
+
+    open_attendance = Attendance.objects.filter(
+        student=student,
+        check_out_time__isnull=True,
+        session__isnull=False,
+    ).select_related("session", "session__course", "session__subject").order_by("-check_in_time").first()
+
+    if open_attendance:
+        session = open_attendance.session
+        return Response({
+            "active": session.is_active,
+            "session_id": session.id,
+            "course": session.course.name,
+            "subject": session.subject.name,
+            "date": session.date,
+            "is_active": session.is_active,
+            "latitude": session.latitude,
+            "longitude": session.longitude,
+            "radius_meters": session.radius_meters,
+            "attendance_state": "CHECKED_IN",
+            "checked_in": True,
+            "checked_out": False,
+        })
+
+    active_class = get_active_class()
+    sessions = AttendanceSession.objects.filter(is_active=True)
+
+    if active_class:
+        sessions = sessions.filter(course=active_class.course)
+    elif getattr(student, "course_id", None):
+        sessions = sessions.filter(course=student.course)
+
+    session = sessions.order_by("-start_time").first()
+
+    if not session:
+        return Response({
+            "active": False,
+            "message": "No active attendance session available",
+            "attendance_state": "NOT_CHECKED_IN",
+        })
+
+    attendance = Attendance.objects.filter(student=student, session=session).first()
+    if not attendance:
+        attendance_state = "NOT_CHECKED_IN"
+    elif attendance.check_out_time:
+        attendance_state = "CHECKED_OUT"
+    else:
+        attendance_state = "CHECKED_IN"
+
+    return Response({
+        "active": True,
+        "session_id": session.id,
+        "course": session.course.name,
+        "subject": session.subject.name,
+        "date": session.date,
+        "is_active": session.is_active,
+        "latitude": session.latitude,
+        "longitude": session.longitude,
+        "radius_meters": session.radius_meters,
+        "attendance_state": attendance_state,
+        "checked_in": attendance is not None,
+        "checked_out": bool(attendance and attendance.check_out_time),
+    })
+
 def get_active_class():
     now = datetime.now()
 
@@ -407,3 +486,6 @@ def get_active_class():
         start_time__lte=current_time,
         end_time__gte=current_time
     ).first()
+
+
+

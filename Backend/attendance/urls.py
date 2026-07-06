@@ -9,6 +9,7 @@ from .views import (
     mark_attendance,
     attendance_report,
     session_report,
+    active_session,
 )
 
 urlpatterns = [
@@ -23,9 +24,12 @@ urlpatterns = [
     path('check-in/', check_in, name='check_in'),
     path('check-out/', check_out, name='check_out'),
     path('mark/', mark_attendance, name='mark_attendance'),
+    path('active-session/', active_session, name='active_session'),
 
     # Lecturer dashboard
     path('lecturer/dashboard/', lecturer_dashboard, name='lecturer_dashboard'),
     path('report/', attendance_report, name='attendance_report'),
     path('session-report/<int:session_id>/', session_report, name='session_report'),
 ]
+
+
