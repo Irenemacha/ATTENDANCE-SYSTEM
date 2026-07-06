@@ -30,6 +30,18 @@ class AttendanceSession(models.Model):
 
     def __str__(self):
         return f"{self.course.name} - {self.subject.name}"
+    
+    allowed_wifi_bssid = models.CharField(
+    max_length=255,
+    blank=True,
+    null=True
+    )
+
+    allowed_beacon_id = models.CharField(
+    max_length=255,
+    null=True,
+    blank=True
+    )
 
 
 # =========================
@@ -38,25 +50,18 @@ class AttendanceSession(models.Model):
 class Attendance(models.Model):
 
     STATUS_CHOICES = [
-        ("PRESENT", "Present"),
-        ("LATE", "Late"),
-        ("ABSENT", "Absent"),
+    ("PRESENT", "Present"),
+    ("LATE", "Late"),
+    ("PARTIAL_ATTENDANCE", "Partial Attendance"),
+    ("INVALID_ATTEMPT", "Invalid Attempt"),
+    ("ABSENT", "Absent"),
+    
     ]
 
-    # 🔥 FIXED HERE
-    student = models.ForeignKey(
-        Student,
-        on_delete=models.CASCADE
-    )
+    student = models.ForeignKey(Student, on_delete=models.CASCADE)
+    session = models.ForeignKey(AttendanceSession, on_delete=models.CASCADE)
 
-    session = models.ForeignKey(
-        AttendanceSession,
-        on_delete=models.CASCADE,
-        null=True,
-        blank=True
-    )
-
-    check_in_time = models.DateTimeField(auto_now_add=True)
+    check_in_time = models.DateTimeField(null=True, blank=True)
     check_out_time = models.DateTimeField(null=True, blank=True)
 
     status = models.CharField(
@@ -64,6 +69,19 @@ class Attendance(models.Model):
         choices=STATUS_CHOICES,
         default="PRESENT"
     )
+    attendance_percentage = models.DecimalField(
+    max_digits=5,
+    decimal_places=2,
+    default=0
+    )
+    
+class MovementLog(models.Model):
+    student = models.ForeignKey(Student, on_delete=models.CASCADE)
+    session = models.ForeignKey(AttendanceSession, on_delete=models.CASCADE)
 
-    def __str__(self):
-        return f"{self.student.full_name} - {self.session}"
+    latitude = models.FloatField()
+    longitude = models.FloatField()
+
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    inside_geofence = models.BooleanField(default=True)

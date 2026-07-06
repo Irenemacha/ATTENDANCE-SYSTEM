@@ -6,7 +6,6 @@ from .views import (
     check_out,
     end_session,
     lecturer_dashboard,
-    mark_attendance,
     attendance_report,
     session_report,
     active_session,
@@ -23,7 +22,6 @@ urlpatterns = [
     # Student attendance
     path('check-in/', check_in, name='check_in'),
     path('check-out/', check_out, name='check_out'),
-    path('mark/', mark_attendance, name='mark_attendance'),
     path('active-session/', active_session, name='active_session'),
 
     # Lecturer dashboard
