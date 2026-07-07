@@ -62,6 +62,8 @@ class UserSessionState(models.Model):
         ("FINGERPRINT_FAILED", "Fingerprint Failed"),
         ("OTP_REQUIRED", "OTP Required"),
         ("ATTENDANCE_GRANTED", "Attendance Granted"),
+        ("CHECKED_IN", "Checked In"),
+        ("CHECKED_OUT", "Checked Out"),
     ]
 
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)

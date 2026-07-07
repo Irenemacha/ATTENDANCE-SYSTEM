@@ -253,19 +253,6 @@ def check_in(request):
     )
 
 
-    # fingerprint verification
-
-    if state.current_state != "ATTENDANCE_GRANTED":
-
-        return Response(
-            {
-                "error": "Fingerprint verification required",
-                "state": state.current_state
-            },
-            status=403
-        )
-
-
 
     # GPS validation
 
@@ -291,7 +278,17 @@ def check_in(request):
             status=403
         )
 
+        # fingerprint verification
 
+    if state.current_state != "ATTENDANCE_GRANTED":
+
+        return Response(
+            {
+                "error": "Fingerprint verification required",
+                "state": state.current_state
+            },
+            status=403
+        )
 
     exists = Attendance.objects.filter(
         student=student,
@@ -358,22 +355,6 @@ def check_out(request):
 
     wifi_bssid = request.data.get("wifi_bssid")
     beacon_id = request.data.get("beacon_id")
-
-
-    state, _ = UserSessionState.objects.get_or_create(
-        user=user
-    )
-
-
-    if state.current_state != "ATTENDANCE_GRANTED":
-
-        return Response(
-            {
-                "error": "Fingerprint verification required",
-                "state": state.current_state
-            },
-            status=403
-        )
 
 
     try:
@@ -484,6 +465,21 @@ def check_out(request):
                 },
                 status=403
             )
+            
+    state, _ = UserSessionState.objects.get_or_create(
+        user=user
+    )
+
+
+    if state.current_state != "ATTENDANCE_GRANTED":
+
+        return Response(
+            {
+                "error": "Fingerprint verification required",
+                "state": state.current_state
+            },
+            status=403
+        )
 
 
 
