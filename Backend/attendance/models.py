@@ -74,14 +74,40 @@ class Attendance(models.Model):
     decimal_places=2,
     default=0
     )
-    
 class MovementLog(models.Model):
-    student = models.ForeignKey(Student, on_delete=models.CASCADE)
-    session = models.ForeignKey(AttendanceSession, on_delete=models.CASCADE)
+
+    student = models.ForeignKey(
+        Student,
+        on_delete=models.CASCADE,
+        related_name="movement_logs"
+    )
+
+    session = models.ForeignKey(
+        AttendanceSession,
+        on_delete=models.CASCADE,
+        related_name="movement_logs"
+    )
 
     latitude = models.FloatField()
+
     longitude = models.FloatField()
 
-    timestamp = models.DateTimeField(auto_now_add=True)
+    timestamp = models.DateTimeField(
+        auto_now_add=True
+    )
 
-    inside_geofence = models.BooleanField(default=True)
+    inside_geofence = models.BooleanField(
+        default=True
+    )
+
+    wifi_valid = models.BooleanField(
+        default=False
+    )
+
+    beacon_valid = models.BooleanField(
+        default=False
+    )
+
+
+    def __str__(self):
+        return f"{self.student} - {self.timestamp}"

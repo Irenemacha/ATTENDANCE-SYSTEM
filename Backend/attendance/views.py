@@ -5,6 +5,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from geopy.distance import geodesic
+from students.models import Notification
+from students.models import Student
 
 from accounts.models import UserSessionState
 from accounts.permissions import IsLecturer, IsStudent
@@ -19,7 +21,7 @@ from courses.models import (
 
 from students.models import Student
 
-from .models import AttendanceSession, Attendance
+from .models import AttendanceSession, Attendance, MovementLog
 from .utils import calculate_distance
 
 
@@ -88,8 +90,9 @@ def start_session(request):
     longitude = request.data.get("longitude")
     radius = request.data.get("radius")
 
-    allowed_wifi = request.data.get("allowed_wifi_bssid")
-    allowed_beacon = request.data.get("allowed_beacon_id")
+    # Fixed, explicit values for the current demo environment.
+    allowed_wifi = "ARUSOPASUANET"
+    allowed_beacon = "Beacon 1C"
 
 
     if not course_id or not subject_id:
@@ -154,7 +157,15 @@ def start_session(request):
                 status=403
             )
 
-
+    AttendanceSession.objects.filter(
+        lecturer=user,
+        course_id=course_id,
+        is_active=True
+    ).update(
+        is_active=False,
+        end_time=timezone.now()
+    )
+     
     session = AttendanceSession.objects.create(
 
         lecturer=user,
@@ -176,6 +187,15 @@ def start_session(request):
         start_time=timezone.now(),
 
         is_active=True
+    )
+    
+    students = Student.objects.all()
+
+    for student in students:
+        Notification.objects.create(
+        student=student,
+        title="Attendance Session Started",
+        message=f"{session.subject.name} session is now active."
     )
 
 
@@ -204,6 +224,8 @@ def check_in(request):
 
     latitude = request.data.get("latitude")
     longitude = request.data.get("longitude")
+    wifi_bssid = request.data.get("wifi_bssid")
+    beacon_id = request.data.get("beacon_id")
 
 
     if not session_id:
@@ -278,6 +300,17 @@ def check_in(request):
             status=403
         )
 
+    # WiFi and BLE are checked before identity verification. Keep this order
+    # consistent with the Flutter validation flow.
+    if session.allowed_wifi_bssid and wifi_bssid != session.allowed_wifi_bssid:
+        return Response({"error": "Unauthorized WiFi network"}, status=403)
+
+    if session.allowed_beacon_id and beacon_id != session.allowed_beacon_id:
+        return Response(
+        {"error": "BLE beacon not detected"},
+        status=403
+    )
+
         # fingerprint verification
 
     if state.current_state != "ATTENDANCE_GRANTED":
@@ -290,46 +323,51 @@ def check_in(request):
             status=403
         )
 
-    exists = Attendance.objects.filter(
-        student=student,
-        session=session
-    ).exists()
+    attendance, created = Attendance.objects.get_or_create(
+    student=student,
+    session=session,
+    defaults={
+        "status": "PRESENT",
+        "check_in_time": timezone.now()
+    }
+)
 
 
+    if not created:
 
-    if exists:
-
-        return Response(
-            {
+        if attendance.check_in_time:
+            return Response(
+              {
                 "error": "Already checked in"
             },
             status=400
-        )
+            )
 
-
-
-    attendance = Attendance.objects.create(
-
-        student=student,
-
-        session=session,
-
-        status="PRESENT",
-
-        check_in_time=timezone.now()
-
-    )
-
-
+    # Update existing ABSENT record
+    attendance.status = "PRESENT"
+    attendance.check_in_time = timezone.now()
+    attendance.save()
+    
     state.current_state = "CHECKED_IN"
-
     state.save()
+    
+    Notification.objects.create(
+    student=student,
+    title="Check-in successful",
+    message=f"You checked into {session.subject.name}"
+)
+
+
+
+
+
+    
 
 
 
     return Response(
         {
-            "message": "Attendance recorded successfully",
+            "message": "Checked-in successfully",
 
             "attendance_id": attendance.id,
 
@@ -338,6 +376,10 @@ def check_in(request):
             "distance": round(distance,2)
         }
     )
+    
+    
+    
+    
 # ======================================================
 # STUDENT CHECK OUT
 # ======================================================
@@ -516,34 +558,36 @@ def check_out(request):
 
         if session_duration > 0:
 
-            attendance.attendance_percentage = (
+            attendance.attendance_percentage = min(
+            (attended_duration / session_duration) * 100,
+            100
+            )
+            
+        if attendance.attendance_percentage < 80:
+           attendance.status = "PARTIAL_ATTENDANCE"
+        else:
+            attendance.status = calculate_attendance_status(attendance)
 
-                attended_duration /
-
-                session_duration
-
-            ) * 100
-
-
-
-    attendance.status = calculate_attendance_status(
-        attendance
-    )
 
 
     attendance.save()
+    
+    Notification.objects.create(
+    student=student,
+    title="Checkout successful",
+    message=f"Attendance completed with {attendance.attendance_percentage:.0f}% attendance."
+)
 
 
 
-    state.current_state = "CHECKED_OUT"
-
+    state.current_state = "IDLE"
     state.save()
 
 
 
     return Response(
         {
-            "message": "Check-out successful",
+            "message": "Checked-out successfully",
 
             "status": attendance.status,
 
@@ -569,17 +613,13 @@ def end_session(request):
 
     session_id = request.data.get("session_id")
 
-
     session = AttendanceSession.objects.filter(
         id=session_id,
         lecturer=request.user,
         is_active=True
     ).first()
 
-
-
     if not session:
-
         return Response(
             {
                 "error": "Active session not found"
@@ -587,43 +627,72 @@ def end_session(request):
             status=404
         )
 
-
-
     session.is_active = False
-
     session.end_time = timezone.now()
-
     session.save()
+    
+    open_records = Attendance.objects.filter(
+    session=session,
+    check_out_time__isnull=True
+)
 
 
+    for attendance in open_records:
 
-    # Create absent records
+        attendance.check_out_time = session.end_time
+
+        duration = (
+        attendance.check_out_time -
+        attendance.check_in_time
+        ).total_seconds()
+
+
+        total = (
+           session.end_time -
+           session.start_time
+        ).total_seconds()
+
+
+        attendance.attendance_percentage = min(
+        (duration / total) * 100,
+        100
+        )
+
+
+        attendance.status = (
+           "PARTIAL_ATTENDANCE"
+           if attendance.attendance_percentage <80
+           else "PRESENT")
+
+
+        attendance.save()
+        
+    Notification.objects.create(
+    student=attendance.student,
+    title="Session ended",
+    message=f"{session.subject.name} session has ended."
+)
+    
 
     students = Student.objects.filter(
         course=session.course
     )
 
-
     for student in students:
 
-
         Attendance.objects.get_or_create(
-
-            student=student,
-
-            session=session,
-
-            defaults={
-                "status": "ABSENT"
-            }
-
-        )
-
-
+        student=student,
+        session=session,
+        defaults={
+        "status": "ABSENT",
+        "attendance_percentage": 0
+    }
+    )
 
     return Response(
         {
-            "message": "Session ended successfully"
+            "message": "Session ended successfully",
+            "session_id": session.id
         }
     )
 
@@ -865,113 +934,106 @@ def session_report(request, session_id):
 # ======================================================
 # STUDENT ACTIVE SESSION
 # ======================================================
-
 @api_view(["GET"])
 @permission_classes([IsStudent])
 def active_session(request):
 
     try:
-
         student = request.user.student
 
     except Student.DoesNotExist:
-
         return Response(
-            {
-                "error": "Student profile not found"
-            },
+            {"error": "Student profile not found"},
             status=404
         )
 
-
-
+    # Student currently checked in
     attendance = Attendance.objects.filter(
-
         student=student,
-
-        check_out_time__isnull=True
-
-    ).select_related(
-        "session"
-    ).first()
-
-
+        check_in_time__isnull=False,
+        check_out_time__isnull=True,
+        status__in=[
+            "PRESENT",
+            "LATE",
+            "PARTIAL_ATTENDANCE"
+        ]
+    ).select_related("session").first()
 
     if attendance:
-
-
         session = attendance.session
 
-
         return Response({
-
-            "active": session.is_active,
-
+            "session_exists": True,
             "session_id": session.id,
-
+            "session_active": session.is_active,
+            "session_ended": not session.is_active,
             "course": session.course.name,
-
             "subject": session.subject.name,
-
-            "attendance_state":
-                "CHECKED_IN",
-
+            "attendance_state": "CHECKED_IN",
             "checked_in": True,
-
-            "checked_out": False
-
+            "checked_out": False,
+            "can_check_in": False,
+            "can_check_out": not session.is_active
         })
 
+    # Student already checked out
+    completed = Attendance.objects.filter(
+        student=student,
+        check_in_time__isnull=False,
+        check_out_time__isnull=False
+    ).select_related(
+        "session"
+    ).order_by(
+        "-check_out_time"
+    ).first()
 
+    if completed:
+        session = completed.session
 
+        return Response({
+            "session_exists": True,
+            "session_id": session.id,
+            "session_active": False,
+            "session_ended": True,
+            "course": session.course.name,
+            "subject": session.subject.name,
+            "attendance_state": "CHECKED_OUT",
+            "checked_in": True,
+            "checked_out": True,
+            "can_check_in": False,
+            "can_check_out": False,
+            "percentage": completed.attendance_percentage
+        })
 
+    # Active lecturer session available
     session = AttendanceSession.objects.filter(
-
         course=student.course,
-
         is_active=True
-
     ).order_by(
         "-start_time"
     ).first()
 
-
-
-    if not session:
-
-
+    if session:
         return Response({
-
-            "active": False,
-
-            "attendance_state":
-                "NOT_CHECKED_IN"
-
+            "session_exists": True,
+            "session_id": session.id,
+            "session_active": True,
+            "session_ended": False,
+            "course": session.course.name,
+            "subject": session.subject.name,
+            "attendance_state": "NOT_CHECKED_IN",
+            "checked_in": False,
+            "checked_out": False,
+            "can_check_in": True,
+            "can_check_out": False
         })
 
-
-
     return Response({
-
-        "active": True,
-
-        "session_id": session.id,
-
-        "course": session.course.name,
-
-        "subject": session.subject.name,
-
-        "attendance_state":
-            "NOT_CHECKED_IN",
-
+        "session_exists": False,
+        "attendance_state": "NOT_CHECKED_IN",
         "checked_in": False,
-
         "checked_out": False
-
     })
-
-
-
 
 
 # ======================================================
@@ -1011,3 +1073,76 @@ def calculate_attendance_status(attendance):
 
 
     return "PARTIAL_ATTENDANCE"
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def location_update(request):
+
+    student = Student.objects.get(
+        user=request.user
+    )
+
+    session = AttendanceSession.objects.filter(
+        is_active=True
+    ).first()
+
+
+    if not session:
+        return Response(
+            {
+                "message": "No active session"
+            },
+            status=400
+        )
+    attendance = Attendance.objects.filter(
+      student=student,
+      session=session,
+      check_in_time__isnull=False
+    ).first()
+
+
+    if not attendance:
+        return Response(
+        {
+            "message": "Fingerprint verification required"
+        },
+        status=403
+        )  
+
+
+    MovementLog.objects.create(
+
+        student=student,
+
+        session=session,
+
+        latitude=request.data.get(
+            "latitude"
+        ),
+
+        longitude=request.data.get(
+            "longitude"
+        ),
+
+        inside_geofence=request.data.get(
+            "inside_geofence",
+            True
+        ),
+
+        wifi_valid=request.data.get(
+            "wifi_valid",
+            False
+        ),
+
+        beacon_valid=request.data.get(
+            "beacon_valid",
+            False
+        )
+    )
+
+
+    return Response(
+        {
+            "message":"Movement recorded"
+        }
+    )

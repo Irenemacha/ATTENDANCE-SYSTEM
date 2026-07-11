@@ -3,6 +3,8 @@ import string
 from datetime import timedelta
 from io import BytesIO
 from django.core.mail import send_mail
+from students.models import Notification
+from accounts.permissions import IsStudent
 
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.models import Group, Permission
@@ -16,6 +18,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
+from attendance.models import Attendance, AttendanceSession, MovementLog
 
 from accounts.models import OTP, UserDevice, UserSessionState
 from accounts.permissions import IsAdminOrStaff
@@ -330,24 +333,34 @@ def verify_device_otp(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def fingerprint_verify(request):
-    success = request.data.get("success", True)
-    state, _ = UserSessionState.objects.get_or_create(user=request.user)
-    if success in [True, "true", "True", 1, "1"]:
-        advance_user_state(request.user, "fingerprint_success")
-        return Response({"message": "Fingerprint verified", "state": "ATTENDANCE_GRANTED"})
 
-    state = advance_user_state(request.user, "fingerprint_fail")
-    if state.current_state == "OTP_REQUIRED":
-        OTP.objects.create(
-            user=request.user,
-            code=str(random.randint(100000, 999999)),
-            purpose="device_verification",
-            expires_at=timezone.now() + timedelta(minutes=5),
+    success = request.data.get("success", True)
+
+    state, _ = UserSessionState.objects.get_or_create(
+        user=request.user
+    )
+
+    if success in [True, "true", "True", 1, "1"]:
+
+        advance_user_state(
+            request.user,
+            "fingerprint_success"
         )
+
+        return Response({
+            "message": "Fingerprint verified",
+            "state": "ATTENDANCE_GRANTED"
+        })
+
+
+    state = advance_user_state(
+        request.user,
+        "fingerprint_fail"
+    )
+
     return Response({
         "message": "Fingerprint failed",
-        "state": state.current_state,
-        "otp_required": state.current_state == "OTP_REQUIRED",
+        "state": state.current_state
     }, status=403)
 
 
@@ -611,3 +624,23 @@ def generate_default_password(length=12):
 
 
 refresh = TokenRefreshView.as_view()
+
+@api_view(["GET"])
+@permission_classes([IsStudent])
+def notifications(request):
+
+    student = request.user.student
+
+    notifications = Notification.objects.filter(
+        student=student
+    ).order_by("-created_at")
+
+    return Response([
+        {
+            "title": n.title,
+            "message": n.message,
+            "read": n.is_read,
+            "date": n.created_at
+        }
+        for n in notifications
+    ])

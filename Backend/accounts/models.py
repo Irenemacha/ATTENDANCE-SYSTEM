@@ -3,7 +3,6 @@ from django.conf import settings
 from django.utils import timezone
 from datetime import timedelta
 
-
 # -------------------------
 # DEVICE MODEL
 # -------------------------
@@ -90,4 +89,4 @@ class UserSessionState(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.current_state}"
-    
+

@@ -24,3 +24,19 @@ class Student(models.Model):
 
     def __str__(self):
         return f"{self.reg_number} - {self.full_name}"
+    
+class Notification(models.Model):
+    student = models.ForeignKey(
+        Student,
+        on_delete=models.CASCADE
+    )
+
+    title = models.CharField(max_length=200)
+    message = models.TextField()
+
+    is_read = models.BooleanField(default=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.title

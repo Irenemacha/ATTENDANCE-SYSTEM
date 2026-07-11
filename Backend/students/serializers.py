@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Student
+from .models import Student, Notification
 
 
 class StudentSerializer(serializers.ModelSerializer):
@@ -21,3 +21,19 @@ class StudentSerializer(serializers.ModelSerializer):
             'year_of_study',
         ]
         read_only_fields = ['id']
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
+        fields = [
+            'id',
+            'title',
+            'message',
+            'is_read',
+            'created_at',
+        ]
+        read_only_fields = [
+            'id',
+            'created_at',
+        ]

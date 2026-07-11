@@ -44,6 +44,8 @@ class AttendanceService {
         "session_id": sessionId,
         "latitude": latitude,
         "longitude": longitude,
+        "wifi_bssid": "ARUSOPASUANET",
+        "beacon_id": "Beacon 1C",
       }),
     );
 
@@ -74,7 +76,11 @@ class AttendanceService {
     };
   }
 
-  Future<Map<String, dynamic>> checkOut({required int sessionId}) async {
+  Future<Map<String, dynamic>> checkOut({
+    required int sessionId,
+    required double latitude,
+    required double longitude,
+  }) async {
     final token = await StorageService.getToken();
     final response = await http.post(
       Uri.parse("${ApiConstants.baseUrl}attendance/check-out/"),
@@ -82,7 +88,13 @@ class AttendanceService {
         "Content-Type": "application/json",
         "Authorization": "Bearer $token",
       },
-      body: jsonEncode({"session_id": sessionId}),
+      body: jsonEncode({
+        "session_id": sessionId,
+        "latitude": latitude,
+        "longitude": longitude,
+        "wifi_bssid": "ARUSOPASUANET",
+        "beacon_id": "Beacon 1C",
+      }),
     );
 
     return {

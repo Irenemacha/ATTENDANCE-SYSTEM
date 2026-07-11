@@ -21,6 +21,11 @@ def user_profile_payload(user):
             "email": student.email,
             "phone_number": student.phone_number,
             "course": student.course.name if student.course_id else None,
+            "department": (
+                student.course.department.name
+                if student.course_id and student.course.department_id
+                else None
+            ),
             "year_of_study": student.year_of_study,
         }
     return {"profile_type": "not yet"}

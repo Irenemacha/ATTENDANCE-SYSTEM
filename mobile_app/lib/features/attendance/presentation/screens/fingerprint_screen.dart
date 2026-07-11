@@ -76,6 +76,7 @@ class _FingerprintScreenState extends State<FingerprintScreen> {
 
   @override
   Widget build(BuildContext context) {
+    print("I AM USING IDENTITY CARD");
     return Scaffold(
       appBar: AppBar(title: const Text("Fingerprint")),
       body: Center(

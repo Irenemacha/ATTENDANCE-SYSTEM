@@ -30,3 +30,4 @@ class UserSessionStateAdmin(admin.ModelAdmin):
     )
     search_fields = ("user__username",)
     list_filter = ("current_state", "device_verified", "geofence_verified", "otp_verified")
+    

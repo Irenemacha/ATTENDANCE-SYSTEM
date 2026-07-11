@@ -61,14 +61,16 @@ class _FingerprintScanScreenState extends State<FingerprintScanScreen> {
 
       if (authenticated && result['success'] == true) {
         setState(() => isBiometricallyVerified = true);
-        Navigator.pushReplacementNamed(
-          context,
-          '/home',
-          arguments: {
-            'fingerprintPassed': true,
-            'fingerprintAttempts': fingerprintAttempts,
-          },
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Identity Verified Successfully')),
         );
+        await Future<void>.delayed(const Duration(milliseconds: 450));
+        if (!mounted) return;
+        if (Navigator.canPop(context)) {
+          Navigator.pop(context, true);
+        } else {
+          Navigator.pushReplacementNamed(context, '/home');
+        }
         return;
       }
 

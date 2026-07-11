@@ -7,6 +7,8 @@ class AttendanceSecuritySnapshot {
   const AttendanceSecuritySnapshot({
     required this.gpsValid,
     required this.gpsMessage,
+    required this.geofenceValid,
+    required this.geofenceMessage,
     required this.latitude,
     required this.longitude,
     required this.distanceMeters,
@@ -25,6 +27,8 @@ class AttendanceSecuritySnapshot {
 
   final bool gpsValid;
   final String gpsMessage;
+  final bool geofenceValid;
+  final String geofenceMessage;
   final double latitude;
   final double longitude;
   final double distanceMeters;
@@ -45,7 +49,10 @@ class AttendanceSecurityService {
   static const double sampleLat = -6.7924;
   static const double sampleLng = 39.2083;
   static const double sampleRadiusMeters = 200;
-  static const String sampleWifiName = 'Campus WiFi';
+  /// Fixed values used by the demo validator. Replace the implementation,
+  /// rather than these contracts, when device network/BLE scanning is added.
+  static const String demoWifiSsid = 'ARUSOPASUANET';
+  static const String demoBeaconId = 'Beacon 1C';
 
   static bool isTimeWindowValid([DateTime? now]) {
     final current = now ?? DateTime.now();
@@ -91,14 +98,8 @@ class AttendanceSecurityService {
           latitude = current.latitude!;
           longitude = current.longitude!;
           distanceMeters = Geofence.distanceToCenter(latitude, longitude);
-          gpsValid = Geofence.isInsideWithRadius(
-            latitude,
-            longitude,
-            radiusMeters: sampleRadiusMeters,
-          );
-          gpsMessage = gpsValid
-              ? 'Inside geofence boundary.'
-              : 'Outside geofence boundary.';
+          gpsValid = true;
+          gpsMessage = 'GPS location acquired.';
         } else {
           gpsMessage = 'Location not available. Using demo coordinates.';
           gpsValid = true;
@@ -112,18 +113,50 @@ class AttendanceSecurityService {
       gpsValid = true;
     }
 
+    // Validation is deliberately evaluated in the required order. A failed
+    // step returns immediately so later checks cannot be treated as passed.
+    if (!gpsValid) {
+      return _failedSnapshot(
+        gpsMessage: gpsMessage,
+        latitude: latitude,
+        longitude: longitude,
+        distanceMeters: distanceMeters,
+      );
+    }
+
+    final geofenceValid = Geofence.isInsideWithRadius(
+      latitude,
+      longitude,
+      radiusMeters: sampleRadiusMeters,
+    );
+    final geofenceMessage = geofenceValid
+        ? 'Inside geofence boundary.'
+        : 'Outside geofence boundary.';
+    if (!geofenceValid) {
+      return _failedSnapshot(
+        gpsMessage: gpsMessage,
+        geofenceValid: false,
+        geofenceMessage: geofenceMessage,
+        latitude: latitude,
+        longitude: longitude,
+        distanceMeters: distanceMeters,
+      );
+    }
+
+    // Demo integrations expose these exact trusted values until native Wi-Fi
+    // and BLE scanners are wired in.
+    const wifiStatus = 'Trusted';
+    const wifiLabel = 'SSID: $demoWifiSsid';
+    const bleDetected = true;
+    const bleStatus = 'Beacon detected: $demoBeaconId';
     final timeWindowValid = isTimeWindowValid();
     final timeWindowMessage = describeTimeWindow();
-
-    final wifiStatus = 'Trusted';
-    final wifiLabel = 'Demo WiFi: $sampleWifiName';
-
-    final bool bleDetected = false;
-    final bleStatus = 'Simulated mode';
 
     return AttendanceSecuritySnapshot(
       gpsValid: gpsValid,
       gpsMessage: gpsMessage,
+      geofenceValid: geofenceValid,
+      geofenceMessage: geofenceMessage,
       latitude: latitude,
       longitude: longitude,
       distanceMeters: distanceMeters,
@@ -140,6 +173,34 @@ class AttendanceSecurityService {
       biometricAvailable: false,
     );
   }
+
+  static AttendanceSecuritySnapshot _failedSnapshot({
+    required String gpsMessage,
+    required double latitude,
+    required double longitude,
+    required double distanceMeters,
+    bool geofenceValid = false,
+    String geofenceMessage = 'Geofence check is pending.',
+  }) => AttendanceSecuritySnapshot(
+    gpsValid: false,
+    gpsMessage: gpsMessage,
+    geofenceValid: geofenceValid,
+    geofenceMessage: geofenceMessage,
+    latitude: latitude,
+    longitude: longitude,
+    distanceMeters: distanceMeters,
+    radiusMeters: sampleRadiusMeters,
+    wifiStatus: 'Pending',
+    wifiLabel: 'SSID: $demoWifiSsid',
+    bleStatus: 'Pending',
+    bleDetected: false,
+    timeWindowValid: false,
+    timeWindowMessage: 'Complete the earlier security checks first.',
+    fingerprintPassed: false,
+    otpVerified: false,
+    canProceed: false,
+    biometricAvailable: false,
+  );
 
   Future<Map<String, dynamic>> verifyFingerprint({
     required bool success,

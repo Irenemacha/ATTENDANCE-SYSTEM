@@ -4,6 +4,7 @@ import 'package:mobile_app/features/attendance/presentation/screens/fingerprint_
 import 'package:mobile_app/features/attendance/presentation/screens/fingerprint_screen.dart';
 import 'package:mobile_app/features/attendance/presentation/screens/otp_fallback_screen.dart';
 import 'package:mobile_app/features/auth/presentation/screens/forgot_password/forgot_password_request.dart';
+import 'package:mobile_app/features/auth/presentation/screens/forgot_password/forgot_password_verify_screen.dart';
 import 'package:mobile_app/features/auth/presentation/screens/landing_screen.dart';
 import 'package:mobile_app/features/auth/presentation/screens/login_screen.dart';
 import 'package:mobile_app/features/auth/presentation/screens/otp_verification_screen.dart';
@@ -36,6 +37,7 @@ class MyApp extends StatelessWidget {
         '/landing': (context) => const LandingScreen(),
         '/login': (context) => const LoginScreen(),
         '/forgot-password': (context) => const ForgotPasswordRequest(),
+        '/forgot-password/verify': (context) => const ForgotPasswordVerifyScreen(),
         '/otp': (context) => const OtpVerificationScreen(),
         '/home': (context) => const MainShellScreen(),
         '/fingerprint-scan': (context) => const FingerprintScanScreen(),
