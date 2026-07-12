@@ -3,6 +3,8 @@ from django.utils import timezone
 from students.models import Student
 from courses.models import Course, Subject
 from django.conf import settings
+from courses.models import Classroom
+from django.conf import settings
 
 
 # =========================
@@ -16,17 +18,68 @@ class AttendanceSession(models.Model):
 
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE)
+    
+    classroom = models.ForeignKey(
+    Classroom,
+    on_delete=models.CASCADE,
+    null=True,
+    blank=True
+    )
+    
+    timetable = models.ForeignKey(
+    "courses.Timetable",
+    on_delete=models.SET_NULL,
+    null=True,
+    blank=True
+    )
 
     date = models.DateField(default=timezone.now)
     start_time = models.DateTimeField(auto_now_add=True)
     end_time = models.DateTimeField(null=True, blank=True)
+    
+    ended_at = models.DateTimeField(
+        null=True,
+        blank=True
+    )
+
+
+    auto_closed = models.BooleanField(
+        default=False
+    )
+    
+    checkout_deadline = models.DateTimeField(
+    null=True,
+    blank=True
+    )
 
     latitude = models.FloatField()
     longitude = models.FloatField()
     radius_meters = models.IntegerField(default=100)
 
     is_active = models.BooleanField(default=True)
+
+
+# Used when lecturer starts a postponed/rescheduled class
+    is_override = models.BooleanField(
+    default=False
+    )
+
+    override_reason = models.TextField(
+    null=True,
+    blank=True
+    )
+
+
     created_at = models.DateTimeField(auto_now_add=True)
+    
+    ended_at = models.DateTimeField(
+    null=True,
+    blank=True
+    )
+
+    auto_closed = models.BooleanField(
+    default=False
+    )
 
     def __str__(self):
         return f"{self.course.name} - {self.subject.name}"

@@ -93,13 +93,13 @@ class _MainShellScreenState extends State<MainShellScreen>
     await loadUser();
     print("STEP 2: loadUser finished");
 
-    print("STEP 3: evaluateSecurity start");
-    await evaluateSecurity();
-    print("STEP 4: evaluateSecurity finished");
-
     print("STEP 5: refreshSessionStatus start");
     await refreshSessionStatus(showSnack: false);
     print("STEP 6: refreshSessionStatus finished");
+
+    print("STEP 3: evaluateSecurity start");
+    await evaluateSecurity();
+    print("STEP 4: evaluateSecurity finished");
 
     print("STEP 7: loadAttendanceStats start");
     await loadAttendanceStats();
@@ -154,6 +154,7 @@ class _MainShellScreenState extends State<MainShellScreen>
     setState(() => isSecurityLoading = true);
     final snapshot = await AttendanceSecurityService.evaluate(
       location: location,
+      detectedBeaconId: activeSession?['beacon_id'],
     );
     if (!mounted) return;
     setState(() {
@@ -200,17 +201,6 @@ class _MainShellScreenState extends State<MainShellScreen>
       _snack(
         data['message']?.toString() ?? 'No active attendance session available',
       );
-    }
-  }
-
-  AttendanceFlowState _parseAttendanceState(dynamic value) {
-    switch (value?.toString()) {
-      case 'CHECKED_IN':
-        return AttendanceFlowState.checkedIn;
-      case 'CHECKED_OUT':
-        return AttendanceFlowState.checkedOut;
-      default:
-        return AttendanceFlowState.notCheckedIn;
     }
   }
 

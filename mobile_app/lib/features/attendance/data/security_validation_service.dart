@@ -68,6 +68,7 @@ class AttendanceSecurityService {
 
   static Future<AttendanceSecuritySnapshot> evaluate({
     required Location location,
+    String? detectedBeaconId,
   }) async {
     const fallbackLat = sampleLat;
     const fallbackLng = sampleLng;
@@ -147,8 +148,11 @@ class AttendanceSecurityService {
     // and BLE scanners are wired in.
     const wifiStatus = 'Trusted';
     const wifiLabel = 'SSID: $demoWifiSsid';
-    const bleDetected = true;
-    const bleStatus = 'Beacon detected: $demoBeaconId';
+    final bleDetected = detectedBeaconId != null;
+
+    final bleStatus = bleDetected
+    ? 'Beacon detected: $detectedBeaconId'
+    : 'No beacon detected';
     final timeWindowValid = isTimeWindowValid();
     final timeWindowMessage = describeTimeWindow();
 

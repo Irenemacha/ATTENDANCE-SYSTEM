@@ -126,4 +126,50 @@ class Timetable(models.Model):
 
     def __str__(self):
         return f"{self.course} - {self.day} {self.start_time}"
+    
+# ========================
+# CLASSROOM MODEL
+# ========================
+
+class Classroom(models.Model):
+
+    room_name = models.CharField(
+        max_length=100
+    )
+
+    room_number = models.CharField(
+        max_length=50,
+        unique=True
+    )
+
+
+    def __str__(self):
+        return self.room_number
+    
+# ========================
+# BLE BEACON MODEL
+# ========================
+
+class BLEBeacon(models.Model):
+
+    beacon_name = models.CharField(
+        max_length=100
+    )
+
+
+    beacon_id = models.CharField(
+        max_length=100,
+        unique=True
+    )
+
+
+    classroom = models.OneToOneField(
+        Classroom,
+        on_delete=models.CASCADE,
+        related_name="beacon"
+    )
+
+
+    def __str__(self):
+        return self.beacon_name
 

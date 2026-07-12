@@ -1,5 +1,9 @@
 from django.contrib import admin
 from django.contrib.auth import get_user_model
+from .models import Classroom, BLEBeacon
+
+
+
 
 from courses.models import (
     Course,
@@ -92,3 +96,6 @@ class TimetableAdmin(GroupFilteredUserAdminMixin, admin.ModelAdmin):
     list_display = ("course", "lecturer", "day", "start_time", "end_time", "room")
     search_fields = ("course__name", "course__code", "lecturer__username", "room")
     list_filter = ("day", "course")
+    
+admin.site.register(Classroom)
+admin.site.register(BLEBeacon)

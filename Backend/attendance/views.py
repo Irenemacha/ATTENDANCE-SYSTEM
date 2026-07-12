@@ -16,7 +16,8 @@ from courses.models import (
     Subject,
     Timetable,
     LecturerCourse,
-    LecturerSubject
+    LecturerSubject,
+    Classroom
 )
 
 from students.models import Student
@@ -80,19 +81,88 @@ def get_active_class():
 @api_view(["POST"])
 @permission_classes([IsLecturer])
 def start_session(request):
+    
+    existing_session = AttendanceSession.objects.filter(
+    lecturer=request.user,
+    is_active=True
+    ).first()
+
+
+    if existing_session:
+
+        return Response(
+        {
+            "error":
+            "You already have an active session. End it before starting another one."
+        },
+        status=400
+    )
 
     user = request.user
 
     course_id = request.data.get("course_id")
     subject_id = request.data.get("subject_id")
+    classroom_id = request.data.get("classroom_id")
+    is_override = request.data.get(
+        "is_override",
+         False
+    )
+
+    override_reason = request.data.get(
+        "override_reason"
+    )
 
     latitude = request.data.get("latitude")
     longitude = request.data.get("longitude")
     radius = request.data.get("radius")
+    
+    # ==============================
+# CHECK TIMETABLE
+# ==============================
+
+    days = {
+    0: "MON",
+    1: "TUE",
+    2: "WED",
+    3: "THU",
+    4: "FRI",
+    5: "SAT",
+    6: "SUN",
+    }
+
+
+    today = timezone.localtime().weekday()
+
+
+    timetable = Timetable.objects.filter(
+    course_id=course_id,
+    lecturer=user,
+    day=days[today]
+    ).first()
+
+
+    if not timetable and not is_override:
+
+        return Response(
+        {
+            "error": "No timetable found. Use override with reason if this is a postponed/replacement class."
+        },
+        status=400
+    )
+
+
+    if is_override and not override_reason:
+
+        return Response(
+        {
+            "error": "Override reason is required"
+        },
+        status=400
+    )
 
     # Fixed, explicit values for the current demo environment.
     allowed_wifi = "ARUSOPASUANET"
-    allowed_beacon = "Beacon 1C"
+    
 
 
     if not course_id or not subject_id:
@@ -102,6 +172,27 @@ def start_session(request):
             },
             status=400
         )
+        
+    if not classroom_id:
+        return Response(
+        {
+            "error":"classroom_id is required"
+        },
+        status=400
+    )
+        
+    classroom = Classroom.objects.filter(
+    id=classroom_id
+    ).first()
+
+
+    if not classroom:
+        return Response(
+        {
+            "error":"Invalid classroom"
+        },
+        status=400
+    )
 
 
     # Lecturer course permission
@@ -156,15 +247,6 @@ def start_session(request):
                 },
                 status=403
             )
-
-    AttendanceSession.objects.filter(
-        lecturer=user,
-        course_id=course_id,
-        is_active=True
-    ).update(
-        is_active=False,
-        end_time=timezone.now()
-    )
      
     session = AttendanceSession.objects.create(
 
@@ -173,6 +255,10 @@ def start_session(request):
         course_id=course_id,
 
         subject=subject,
+        
+        classroom=classroom,
+        
+        timetable=timetable,
 
         latitude=latitude,
 
@@ -182,11 +268,13 @@ def start_session(request):
 
         allowed_wifi_bssid=allowed_wifi,
 
-        allowed_beacon_id=allowed_beacon,
-
         start_time=timezone.now(),
 
-        is_active=True
+        is_active=True,
+        
+        is_override=is_override,
+
+        override_reason=override_reason
     )
     
     students = Student.objects.all()
@@ -256,6 +344,22 @@ def check_in(request):
         id=session_id,
         is_active=True
     ).first()
+    expected_beacon = session.classroom.beacon
+    
+    # DEMO BLE SCANNER RESULT
+    detected_beacon_id = "Beacon 1C"
+
+
+    if detected_beacon_id != expected_beacon.beacon_id:
+
+        return Response(
+        {
+            "error":"Wrong classroom beacon detected",
+            "expected": expected_beacon.beacon_id,
+            "detected": detected_beacon_id
+        },
+        status=400
+    )
 
 
 
@@ -271,7 +375,7 @@ def check_in(request):
 
 
     state, _ = UserSessionState.objects.get_or_create(
-        user=user
+    user=user
     )
 
 
@@ -305,11 +409,20 @@ def check_in(request):
     if session.allowed_wifi_bssid and wifi_bssid != session.allowed_wifi_bssid:
         return Response({"error": "Unauthorized WiFi network"}, status=403)
 
-    if session.allowed_beacon_id and beacon_id != session.allowed_beacon_id:
+    # BLE classroom validation
+
+    if session.classroom:
+
+       expected_beacon = session.classroom.beacon
+
+    if beacon_id != expected_beacon.beacon_id:
+
         return Response(
-        {"error": "BLE beacon not detected"},
-        status=403
-    )
+            {
+                "error": "Wrong classroom BLE beacon detected"
+            },
+            status=403
+        )
 
         # fingerprint verification
 
@@ -451,6 +564,16 @@ def check_out(request):
             },
             status=403
         )
+        
+    if session.checkout_deadline and timezone.now() > session.checkout_deadline:
+
+        return Response(
+        {
+            "error":
+            "Checkout period expired. You can no longer checkout."
+        },
+        status=403
+        )
 
 
 
@@ -495,18 +618,20 @@ def check_out(request):
 
 
 
-    # BLE validation
+    # BLE classroom validation
 
-    if session.allowed_beacon_id:
+    if session.classroom:
 
-        if beacon_id != session.allowed_beacon_id:
+        expected_beacon = session.classroom.beacon
 
-            return Response(
-                {
-                    "error": "BLE beacon not detected"
-                },
-                status=403
-            )
+    if beacon_id != expected_beacon.beacon_id:
+
+        return Response(
+            {
+                "error": "Wrong classroom BLE beacon detected"
+            },
+            status=403
+        )
             
     state, _ = UserSessionState.objects.get_or_create(
         user=user
@@ -628,7 +753,15 @@ def end_session(request):
         )
 
     session.is_active = False
+
     session.end_time = timezone.now()
+
+    session.ended_at = timezone.now()
+
+    session.checkout_deadline = (
+    session.end_time + timedelta(minutes=10)
+    )
+
     session.save()
     
     open_records = Attendance.objects.filter(
@@ -937,6 +1070,7 @@ def session_report(request, session_id):
 @api_view(["GET"])
 @permission_classes([IsStudent])
 def active_session(request):
+    auto_close_expired_sessions()
 
     try:
         student = request.user.student
@@ -973,7 +1107,10 @@ def active_session(request):
             "checked_in": True,
             "checked_out": False,
             "can_check_in": False,
-            "can_check_out": not session.is_active
+            "can_check_out": (
+            not session.is_active and
+            timezone.now() <= session.checkout_deadline
+        )
         })
 
     # Student already checked out
@@ -995,6 +1132,8 @@ def active_session(request):
             "session_id": session.id,
             "session_active": False,
             "session_ended": True,
+            "checkout_deadline": session.checkout_deadline,
+            "percentage": completed.attendance_percentage,
             "course": session.course.name,
             "subject": session.subject.name,
             "attendance_state": "CHECKED_OUT",
@@ -1002,7 +1141,8 @@ def active_session(request):
             "checked_out": True,
             "can_check_in": False,
             "can_check_out": False,
-            "percentage": completed.attendance_percentage
+            "auto_closed": session.auto_closed,
+            
         })
 
     # Active lecturer session available
@@ -1019,13 +1159,18 @@ def active_session(request):
             "session_id": session.id,
             "session_active": True,
             "session_ended": False,
+            "auto_closed": session.auto_closed,
+            "checkout_deadline": session.checkout_deadline,
             "course": session.course.name,
             "subject": session.subject.name,
             "attendance_state": "NOT_CHECKED_IN",
             "checked_in": False,
             "checked_out": False,
             "can_check_in": True,
-            "can_check_out": False
+            "can_check_out": False,
+            "beacon_id": session.classroom.beacon.beacon_id
+    if session.classroom and hasattr(session.classroom, "beacon")
+       else None,
         })
 
     return Response({
@@ -1035,6 +1180,66 @@ def active_session(request):
         "checked_out": False
     })
 
+
+def auto_close_expired_sessions():
+
+    now = timezone.localtime()
+
+    active_sessions = AttendanceSession.objects.filter(
+        is_active=True
+    )
+
+    for session in active_sessions:
+
+        timetable = session.timetable
+
+        if not timetable:
+            continue
+
+
+        session_end = timezone.datetime.combine(
+            session.date,
+            timetable.end_time
+        )
+
+        session_end = timezone.make_aware(
+            session_end
+        )
+
+
+        if now > session_end:
+
+            session.is_active = False
+
+            session.end_time = session_end
+
+            session.ended_at = now
+
+            session.auto_closed = True
+
+            session.checkout_deadline = (
+                now + timedelta(minutes=10)
+            )
+
+            session.save()
+
+
+            students = Student.objects.filter(
+                course=session.course
+            )
+
+
+            for student in students:
+
+                Notification.objects.create(
+                    student=student,
+                    title="Session automatically ended",
+                    message=(
+                        f"{session.subject.name} session "
+                        "was automatically closed. "
+                        "You can checkout within 10 minutes."
+                    )
+                )
 
 # ======================================================
 # ATTENDANCE STATUS CALCULATION
