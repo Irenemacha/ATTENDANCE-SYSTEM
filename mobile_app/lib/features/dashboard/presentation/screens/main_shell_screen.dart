@@ -165,6 +165,9 @@ class _MainShellScreenState extends State<MainShellScreen>
 
   Future<void> refreshSessionStatus({bool showSnack = true}) async {
     final result = await attendanceService.getActiveSession();
+    distanceFromClassroom =
+    (result['distance'] as num?)?.toDouble();
+    print(result);
     if (!mounted) return;
 
     if (result['success'] != true) {
@@ -223,6 +226,7 @@ class _MainShellScreenState extends State<MainShellScreen>
   bool canCheckOut() {
  return activeSession?['can_check_out'] == true;
 }
+double? distanceFromClassroom;
 
   List<String> missingSecuritySteps({required bool forCheckout}) {
     final snapshot = securitySnapshot;
@@ -241,7 +245,11 @@ class _MainShellScreenState extends State<MainShellScreen>
       missing.add('WiFi validation (ARUSOPASUANET)');
     }
     if (!snapshot.bleDetected) {
-      missing.add('BLE validation (Beacon 1C)');
+      if (!snapshot.bleDetected) {
+  missing.add(
+    'BLE validation (${activeSession?['beacon_id'] ?? 'class beacon'})',
+  );
+}
     }
     if (!snapshot.timeWindowValid) {
       missing.add('Valid attendance time window');
@@ -407,6 +415,14 @@ class _MainShellScreenState extends State<MainShellScreen>
       if (sessionId == null || current.latitude == null || current.longitude == null) {
         throw Exception('No active attendance session available');
       }
+
+      if (!checkoutIdentityVerified) {
+        await openFingerprintScan();
+
+        if (!checkoutIdentityVerified) {
+          return;
+        }
+      }
       final result = await attendanceService.checkOut(
         sessionId: sessionId,
         latitude: current.latitude!,
@@ -513,10 +529,12 @@ class _MainShellScreenState extends State<MainShellScreen>
         canCheckIn: canCheckIn(),
         canCheckOut: canCheckOut(),
         isSecurityLoading: isSecurityLoading,
+        distanceFromClassroom: distanceFromClassroom,
         onRefresh: refreshAll,
         onFingerprint: openFingerprintScan,
         onCheckIn: startCheckIn,
         onCheckOut: startCheckOut,
+        
       ),
       AttendanceTab(
         onCheckIn: startCheckIn,
@@ -578,7 +596,7 @@ class _MainShellScreenState extends State<MainShellScreen>
 }
 
 class HomeTab extends StatelessWidget {
-  const HomeTab({
+  HomeTab({
     super.key,
     required this.user,
     required this.stats,
@@ -594,6 +612,7 @@ class HomeTab extends StatelessWidget {
     required this.onFingerprint,
     required this.onCheckIn,
     required this.onCheckOut,
+    required this.distanceFromClassroom,
   });
 
   final Map<String, dynamic>? user;
@@ -606,10 +625,12 @@ class HomeTab extends StatelessWidget {
   final bool canCheckIn;
   final bool canCheckOut;
   final bool isSecurityLoading;
+  final double? distanceFromClassroom;
   final Future<void> Function() onRefresh;
   final Future<void> Function() onFingerprint;
   final VoidCallback onCheckIn;
   final VoidCallback onCheckOut;
+  
 
   @override
   Widget build(BuildContext context) {
@@ -697,6 +718,7 @@ class HomeTab extends StatelessWidget {
           _GeoAttendStatusCard(
             snapshot: securitySnapshot,
             isLoading: isSecurityLoading,
+            distanceFromClassroom: distanceFromClassroom,
           ),
           const SizedBox(height: 12),
           _ConnectivityStatusCard(snapshot: securitySnapshot),
@@ -900,9 +922,16 @@ class _SessionCard extends StatelessWidget {
 }
 
 class _GeoAttendStatusCard extends StatelessWidget {
-  const _GeoAttendStatusCard({required this.snapshot, required this.isLoading});
+  const _GeoAttendStatusCard({
+    required this.snapshot,
+    required this.isLoading,
+    required this.distanceFromClassroom,
+  });
+
   final AttendanceSecuritySnapshot? snapshot;
   final bool isLoading;
+  final double? distanceFromClassroom;
+  
   @override
   Widget build(BuildContext context) {
     final valid = snapshot?.gpsValid == true;
@@ -915,9 +944,10 @@ class _GeoAttendStatusCard extends StatelessWidget {
           : Column(
               children: [
                 _MetricRow(
-                  label: 'Coordinates',
-                  value:
-                      '${snapshot?.latitude.toStringAsFixed(5) ?? '-'}, ${snapshot?.longitude.toStringAsFixed(5) ?? '-'}',
+                    label: 'Distance from classroom',
+                    value: distanceFromClassroom != null
+                         ? '${distanceFromClassroom!.toStringAsFixed(1)} m'
+                         : '-',
                 ),
                 _MetricRow(
                   label: 'Radius',
@@ -981,11 +1011,12 @@ class _IdentityVerificationCard extends StatelessWidget {
      
   
     
-  final enabled = sessionAvailable && !verified;
-        snapshot?.geofenceValid == true &&
-        snapshot?.wifiStatus == 'Trusted' &&
-        snapshot?.bleDetected == true &&
-        sessionAvailable && !verified;
+  final enabled =
+    snapshot?.geofenceValid == true &&
+    snapshot?.wifiStatus == 'Trusted' &&
+    snapshot?.bleDetected == true &&
+    sessionAvailable &&
+    !verified;
 
 
     return _GlassCard(

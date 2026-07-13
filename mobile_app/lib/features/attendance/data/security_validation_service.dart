@@ -48,7 +48,7 @@ class AttendanceSecuritySnapshot {
 class AttendanceSecurityService {
   static const double sampleLat = -6.7924;
   static const double sampleLng = 39.2083;
-  static const double sampleRadiusMeters = 200;
+  static const double sampleRadiusMeters = 20;
   /// Fixed values used by the demo validator. Replace the implementation,
   /// rather than these contracts, when device network/BLE scanning is added.
   static const String demoWifiSsid = 'ARUSOPASUANET';

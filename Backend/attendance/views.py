@@ -25,27 +25,8 @@ from students.models import Student
 from .models import AttendanceSession, Attendance, MovementLog
 from .utils import calculate_distance
 
-
-# ======================================================
-# GEOFENCE HELPER
-# ======================================================
-
-def is_within_geofence(
-    student_lat,
-    student_lng,
-    session_lat,
-    session_lng,
-    radius
-):
-
-    distance = geodesic(
-        (student_lat, student_lng),
-        (session_lat, session_lng)
-    ).meters
-
+def is_within_geofence(distance, radius):
     return distance <= radius
-
-
 
 # ======================================================
 # ACTIVE CLASS CHECK
@@ -250,32 +231,32 @@ def start_session(request):
      
     session = AttendanceSession.objects.create(
 
-        lecturer=user,
+    lecturer=user,
 
-        course_id=course_id,
+    course_id=course_id,
 
-        subject=subject,
-        
-        classroom=classroom,
-        
-        timetable=timetable,
+    subject=subject,
 
-        latitude=latitude,
+    classroom=classroom,
 
-        longitude=longitude,
+    timetable=timetable,
 
-        radius_meters=radius,
+    latitude=classroom.latitude,
 
-        allowed_wifi_bssid=allowed_wifi,
+    longitude=classroom.longitude,
 
-        start_time=timezone.now(),
+    radius_meters=classroom.radius_meters,
 
-        is_active=True,
-        
-        is_override=is_override,
+    allowed_wifi_bssid=allowed_wifi,
 
-        override_reason=override_reason
-    )
+    start_time=timezone.now(),
+
+    is_active=True,
+
+    is_override=is_override,
+
+    override_reason=override_reason
+)
     
     students = Student.objects.all()
 
@@ -1154,8 +1135,10 @@ def active_session(request):
     ).first()
 
     if session:
+        distance = 0
         return Response({
             "session_exists": True,
+            "distance": distance,
             "session_id": session.id,
             "session_active": True,
             "session_ended": False,
@@ -1312,42 +1295,33 @@ def location_update(request):
             "message": "Fingerprint verification required"
         },
         status=403
-        )  
+        ) 
+        
+    distance = calculate_distance(
+    request.data.get("latitude"),
+    request.data.get("longitude"),
+    session.latitude,
+    session.longitude
+)
+
+    inside_geofence = distance <= session.radius_meters 
 
 
     MovementLog.objects.create(
-
-        student=student,
-
-        session=session,
-
-        latitude=request.data.get(
-            "latitude"
-        ),
-
-        longitude=request.data.get(
-            "longitude"
-        ),
-
-        inside_geofence=request.data.get(
-            "inside_geofence",
-            True
-        ),
-
-        wifi_valid=request.data.get(
-            "wifi_valid",
-            False
-        ),
-
-        beacon_valid=request.data.get(
-            "beacon_valid",
-            False
-        )
+    student=student,
+    session=session,
+    latitude=request.data.get("latitude"),
+    longitude=request.data.get("longitude"),
+    inside_geofence=inside_geofence,
+    wifi_valid=request.data.get("wifi_valid", False),
+    beacon_valid=request.data.get("beacon_valid", False)
     )
 
 
     return Response(
         {
-            "message":"Movement recorded"
+            "message":"Movement recorded",
+            "distance": round(distance, 2),
+            "inside_geofence": inside_geofence
         }
     )

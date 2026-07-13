@@ -132,20 +132,15 @@ class Timetable(models.Model):
 # ========================
 
 class Classroom(models.Model):
+    room_name = models.CharField(max_length=100)
+    room_number = models.CharField(max_length=50)
 
-    room_name = models.CharField(
-        max_length=100
-    )
-
-    room_number = models.CharField(
-        max_length=50,
-        unique=True
-    )
-
+    latitude = models.FloatField(null=True, blank=True)
+    longitude = models.FloatField(null=True, blank=True)
+    radius_meters = models.IntegerField(default=20)
 
     def __str__(self):
         return self.room_number
-    
 # ========================
 # BLE BEACON MODEL
 # ========================
