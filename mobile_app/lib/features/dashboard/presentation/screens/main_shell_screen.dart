@@ -261,27 +261,30 @@ class _MainShellScreenState extends State<MainShellScreen>
   }
 
   Future<void> openFingerprintScan() async {
-  
-    await refreshSessionStatus(showSnack: false);
+
     if (!mounted) return;
-    if(activeSession == null){
-      _snack('No active attendance session available');
-      return;
-    }
+
     final verified = await Navigator.pushNamed<bool>(
-      context,
-      '/fingerprint-scan',
-      arguments: {'fingerprintAttempts': fingerprintAttempts},
-    );
+    context,
+    '/fingerprint-scan',
+    arguments: {
+      'fingerprintAttempts': fingerprintAttempts,
+    },
+  );
+
     if (!mounted || verified != true) return;
+
     setState(() {
-      fingerprintPassed = true;
-      if (attendanceState == AttendanceFlowState.checkedIn && !hasActiveSession) {
-        checkoutIdentityVerified = true;
-      }
-    });
-    _snack('Identity Verified Successfully');
-  }
+    fingerprintPassed = true;
+
+    if (attendanceState == AttendanceFlowState.checkedIn &&
+        !hasActiveSession) {
+      checkoutIdentityVerified = true;
+    }
+  });
+
+  _snack('Identity Verified Successfully');
+}
 
   Future<LocationData> _currentLocation() async {
     var enabled = await location.serviceEnabled();
@@ -298,46 +301,86 @@ class _MainShellScreenState extends State<MainShellScreen>
     return location.getLocation();
   }
 
-  Future<void> startCheckIn() async {
-    await refreshSessionStatus(showSnack: false);
-    await evaluateSecurity();
-    if (!canCheckIn()) {
-      await showSecurityDialog(forCheckout: false);
-      return;
+ Future<void> startCheckIn() async {
+    print("START CHECK IN PRESSED");
+  await refreshSessionStatus(showSnack: false);
+
+  if (!mounted) return;
+
+  // Open fingerprint verification first
+  final verified = await Navigator.pushNamed<bool>(
+    context,
+    '/fingerprint-scan',
+    arguments: {
+      'fingerprintAttempts': fingerprintAttempts,
+    },
+  );
+
+  if (!mounted || verified != true) {
+    return;
+  }
+
+  setState(() {
+    fingerprintPassed = true;
+  });
+
+  await evaluateSecurity();
+
+  if (!canCheckIn()) {
+    await showSecurityDialog(forCheckout: false);
+    return;
+  }
+
+  try {
+    final current = await _currentLocation();
+
+    final latitude = current.latitude;
+    final longitude = current.longitude;
+    final sessionId = activeSessionId;
+
+    if (latitude == null || longitude == null || sessionId == null) {
+      throw Exception('Could not prepare attendance location/session');
     }
 
-    try {
-      final current = await _currentLocation();
-      final latitude = current.latitude;
-      final longitude = current.longitude;
-      final sessionId = activeSessionId;
-      if (latitude == null || longitude == null || sessionId == null) {
-        throw Exception('Could not prepare attendance location/session');
-      }
+    final checkInResult = await attendanceService.checkIn(
+      sessionId: sessionId,
+      latitude: latitude,
+      longitude: longitude,
+    );
 
-      final checkInResult = await attendanceService.checkIn(
-        sessionId: sessionId,
-        latitude: latitude,
-        longitude: longitude,
+    if (!mounted) return;
+
+    if (checkInResult['success'] != true) {
+      final data = Map<String, dynamic>.from(
+        checkInResult['data'] ?? {},
       );
-      if (!mounted) return;
-      if (checkInResult['success'] != true) {
-        final data = Map<String, dynamic>.from(checkInResult['data'] ?? {});
-        throw Exception(data['detail'] ?? data['error'] ?? 'Check-in failed');
-      }
 
-      // check-in is the single authoritative attendance write on Django.
-      // Do not call the legacy /attendance/mark/ endpoint afterwards.
-      _snack('Checked-in successfully');
-      setState(() => attendanceState = AttendanceFlowState.checkedIn);
-      await Future.wait([
-        refreshSessionStatus(showSnack: false),
-        loadAttendanceStats(),
-      ]);
-    } catch (error) {
-      if (mounted) _snack(error.toString().replaceFirst('Exception: ', ''));
+      throw Exception(
+        data['detail'] ??
+        data['error'] ??
+        'Check-in failed',
+      );
+    }
+
+    _snack('Checked-in successfully');
+
+    setState(() {
+      attendanceState = AttendanceFlowState.checkedIn;
+    });
+
+    await Future.wait([
+      refreshSessionStatus(showSnack: false),
+      loadAttendanceStats(),
+    ]);
+
+  } catch (error) {
+    if (mounted) {
+      _snack(
+        error.toString().replaceFirst('Exception: ', ''),
+      );
     }
   }
+}
 
   Future<void> startCheckOut() async {
     await refreshSessionStatus(showSnack: false);

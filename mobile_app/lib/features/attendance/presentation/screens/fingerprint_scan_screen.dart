@@ -11,6 +11,11 @@ class FingerprintScanScreen extends StatefulWidget {
 }
 
 class _FingerprintScanScreenState extends State<FingerprintScanScreen> {
+  @override
+  void initState() {
+  super.initState();
+  print("🔥 FINGERPRINT SCREEN CREATED");
+  }
   final LocalAuthentication _localAuth = LocalAuthentication();
   final AttendanceService _attendanceService = AttendanceService();
 

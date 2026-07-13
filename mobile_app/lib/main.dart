@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_app/core/storage/storage_service.dart';
 import 'package:mobile_app/features/attendance/presentation/screens/fingerprint_scan_screen.dart';
-import 'package:mobile_app/features/attendance/presentation/screens/fingerprint_screen.dart';
 import 'package:mobile_app/features/attendance/presentation/screens/otp_fallback_screen.dart';
 import 'package:mobile_app/features/auth/presentation/screens/forgot_password/forgot_password_request.dart';
 import 'package:mobile_app/features/auth/presentation/screens/forgot_password/forgot_password_verify_screen.dart';
@@ -42,12 +41,6 @@ class MyApp extends StatelessWidget {
         '/home': (context) => const MainShellScreen(),
         '/fingerprint-scan': (context) => const FingerprintScanScreen(),
         '/otp-fallback': (context) => const OtpFallbackScreen(),
-        '/fingerprint': (context) {
-          final args =
-              ModalRoute.of(context)?.settings.arguments
-                  as Map<String, dynamic>?;
-          return FingerprintScreen(sessionId: args?['session_id'] as int? ?? 0);
-        },
       },
     );
   }
