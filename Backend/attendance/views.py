@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
@@ -92,6 +92,7 @@ def start_session(request):
     override_reason = request.data.get(
         "override_reason"
     )
+    
 
     latitude = request.data.get("latitude")
     longitude = request.data.get("longitude")
@@ -255,7 +256,8 @@ def start_session(request):
 
     is_override=is_override,
 
-    override_reason=override_reason
+    override_reason=override_reason,
+    override_duration_minutes=120
 )
     
     students = Student.objects.all()
@@ -753,67 +755,81 @@ def end_session(request):
 
     for attendance in open_records:
 
-        attendance.check_out_time = session.end_time
+       attendance.check_out_time = session.end_time
 
-        duration = (
+       duration = (
         attendance.check_out_time -
         attendance.check_in_time
+       ).total_seconds()
+
+
+       total = (
+        session.end_time -
+        session.start_time
         ).total_seconds()
 
 
-        total = (
-           session.end_time -
-           session.start_time
-        ).total_seconds()
-
-
-        attendance.attendance_percentage = min(
+       attendance.attendance_percentage = min(
         (duration / total) * 100,
         100
-        )
+       )
 
 
-        attendance.status = (
-           "PARTIAL_ATTENDANCE"
-           if attendance.attendance_percentage <80
-           else "PRESENT")
+       attendance.status = (
+        "PARTIAL_ATTENDANCE"
+        if attendance.attendance_percentage < 80
+        else "PRESENT"
+       )
 
 
-        attendance.save()
-        
-    Notification.objects.create(
-    student=attendance.student,
-    title="Session ended",
-    message=f"{session.subject.name} session has ended."
+       attendance.save()
+
+
+    students = Student.objects.filter(
+    course=session.course
 )
-    
+
+
+    Notification.objects.create(
+        student=student,
+        title="Session ended",
+        message=f"{session.subject.name} session has ended."
+    )
 
     students = Student.objects.filter(
         course=session.course
     )
 
+
+    # Create ABSENT records for students who never checked in
     for student in students:
 
         Attendance.objects.get_or_create(
-        student=student,
-        session=session,
-        defaults={
-        "status": "ABSENT",
-        "attendance_percentage": 0
-    }
-    )
+            student=student,
+            session=session,
+            defaults={
+                "status": "ABSENT",
+                "attendance_percentage": 0
+            }
+        )
 
-    return Response(
+
+    # Notify all students
+    for student in students:
+
+        Notification.objects.create(
+            student=student,
+            title="Session ended",
+            message=f"{session.subject.name} session has ended."
+        )
+
+
+        return Response(
         {
             "message": "Session ended successfully",
             "session_id": session.id
         }
     )
-
-
-
-
-
 # ======================================================
 # LECTURER DASHBOARD
 # ======================================================
@@ -1135,26 +1151,30 @@ def active_session(request):
     ).first()
 
     if session:
-        distance = 0
-        return Response({
-            "session_exists": True,
-            "distance": distance,
-            "session_id": session.id,
-            "session_active": True,
-            "session_ended": False,
-            "auto_closed": session.auto_closed,
-            "checkout_deadline": session.checkout_deadline,
-            "course": session.course.name,
-            "subject": session.subject.name,
-            "attendance_state": "NOT_CHECKED_IN",
-            "checked_in": False,
-            "checked_out": False,
-            "can_check_in": True,
-            "can_check_out": False,
-            "beacon_id": session.classroom.beacon.beacon_id
-    if session.classroom and hasattr(session.classroom, "beacon")
-       else None,
-        })
+
+        distance = None
+
+    return Response({
+        "session_exists": True,
+        "distance": distance,
+        "session_id": session.id,
+        "session_active": True,
+        "session_ended": False,
+        "auto_closed": session.auto_closed,
+        "checkout_deadline": session.checkout_deadline,
+        "course": session.course.name,
+        "subject": session.subject.name,
+        "attendance_state": "NOT_CHECKED_IN",
+        "checked_in": False,
+        "checked_out": False,
+        "can_check_in": True,
+        "can_check_out": False,
+        "beacon_id": (
+            session.classroom.beacon.beacon_id
+            if session.classroom and hasattr(session.classroom, "beacon")
+            else None
+        ),
+    })
 
     return Response({
         "session_exists": False,
@@ -1174,23 +1194,52 @@ def auto_close_expired_sessions():
 
     for session in active_sessions:
 
-        timetable = session.timetable
+        # ==============================
+        # POSTPONED / OVERRIDE SESSION
+        # ==============================
 
-        if not timetable:
-            continue
+        if session.is_override:
 
-
-        session_end = timezone.datetime.combine(
-            session.date,
-            timetable.end_time
-        )
-
-        session_end = timezone.make_aware(
-            session_end
-        )
+            session_end = (
+                session.start_time +
+                timedelta(hours=2)
+            )
 
 
-        if now > session_end:
+        # ==============================
+        # NORMAL TIMETABLE SESSION
+        # ==============================
+
+        else:
+
+            timetable = session.timetable
+
+            if not timetable:
+                continue
+
+
+            session_end = session.start_time.replace(
+                hour=timetable.end_time.hour,
+                minute=timetable.end_time.minute,
+                second=0,
+                microsecond=0
+            )
+
+
+            # Fix case where timetable end becomes before start
+            if session_end <= session.start_time:
+
+                session_end = (
+                    session.start_time +
+                    timedelta(hours=2)
+                )
+
+
+        # ==============================
+        # AUTO CLOSE
+        # ==============================
+
+        if now >= session_end:
 
             session.is_active = False
 
@@ -1220,10 +1269,10 @@ def auto_close_expired_sessions():
                     message=(
                         f"{session.subject.name} session "
                         "was automatically closed. "
-                        "You can checkout within 10 minutes."
+                        "Checkout is available for 10 minutes."
                     )
                 )
-
+                
 # ======================================================
 # ATTENDANCE STATUS CALCULATION
 # ======================================================

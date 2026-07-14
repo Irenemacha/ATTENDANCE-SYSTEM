@@ -132,7 +132,7 @@ class _MainShellScreenState extends State<MainShellScreen>
 
   if (!mounted) return;
 
-  final data = Map<String, dynamic>.from(result['data'] ?? {});
+  final data = Map<String, dynamic>.from(result['data'] ?? result);
   final dashboardData = Map<String, dynamic>.from(data['data'] ?? data);
 
   if (attendanceState == AttendanceFlowState.checkedIn &&
@@ -155,6 +155,7 @@ class _MainShellScreenState extends State<MainShellScreen>
     final snapshot = await AttendanceSecurityService.evaluate(
       location: location,
       detectedBeaconId: activeSession?['beacon_id'],
+      sessionActive: true,
     );
     if (!mounted) return;
     setState(() {

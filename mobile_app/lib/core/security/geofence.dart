@@ -1,9 +1,9 @@
 import 'dart:math';
 
 class Geofence {
-  static const double classroomLat = -6.7924;
-  static const double classroomLng = 39.2083;
-  static const double allowedRadiusMeters = 100;
+  static const double classroomLat = -6.7634967;
+  static const double classroomLng = 39.2147658;
+  static const double allowedRadiusMeters = 20;
 
   static double _distance(
     double lat1,

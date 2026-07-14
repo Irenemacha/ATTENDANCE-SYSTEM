@@ -68,6 +68,11 @@ class AttendanceSession(models.Model):
     null=True,
     blank=True
     )
+    
+    override_duration_minutes = models.IntegerField(
+    default=120,
+    help_text="Duration for postponed/replacement classes in minutes"
+    )
 
 
     created_at = models.DateTimeField(auto_now_add=True)

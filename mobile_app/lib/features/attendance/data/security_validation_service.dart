@@ -67,145 +67,237 @@ class AttendanceSecurityService {
   }
 
   static Future<AttendanceSecuritySnapshot> evaluate({
-    required Location location,
-    String? detectedBeaconId,
-  }) async {
-    const fallbackLat = sampleLat;
-    const fallbackLng = sampleLng;
+  required Location location,
+  required bool sessionActive,
+  String? detectedBeaconId,
+}) async {
+  const fallbackLat = sampleLat;
+  const fallbackLng = sampleLng;
 
-    bool gpsValid = false;
-    String gpsMessage = 'Checking GPS…';
-    double latitude = fallbackLat;
-    double longitude = fallbackLng;
-    double distanceMeters = Geofence.distanceToCenter(fallbackLat, fallbackLng);
+  bool gpsValid = false;
+  String gpsMessage = 'Checking GPS…';
 
-    try {
-      final enabled = await location.serviceEnabled();
-      if (!enabled) {
-        final requested = await location.requestService();
-        if (!requested) {
-          gpsMessage = 'Location services are off. Using demo coordinates.';
-        }
+  double latitude = fallbackLat;
+  double longitude = fallbackLng;
+
+  double distanceMeters =
+      Geofence.distanceToCenter(fallbackLat, fallbackLng);
+
+
+  try {
+    final enabled = await location.serviceEnabled();
+
+    if (!enabled) {
+      final requested = await location.requestService();
+
+      if (!requested) {
+        gpsMessage =
+            'Location services are off';
       }
+    }
 
-      var permission = await location.hasPermission();
-      if (permission == PermissionStatus.denied) {
-        permission = await location.requestPermission();
-      }
 
-      if (permission == PermissionStatus.granted) {
-        final current = await location.getLocation();
-        if (current.latitude != null && current.longitude != null) {
-          latitude = current.latitude!;
-          longitude = current.longitude!;
-          distanceMeters = Geofence.distanceToCenter(latitude, longitude);
-          gpsValid = true;
-          gpsMessage = 'GPS location acquired.';
-        } else {
-          gpsMessage = 'Location not available. Using demo coordinates.';
-          gpsValid = true;
-        }
-      } else {
-        gpsMessage = 'Location permission unavailable. Using demo coordinates.';
+    var permission = await location.hasPermission();
+
+    if (permission == PermissionStatus.denied) {
+      permission = await location.requestPermission();
+    }
+
+
+    if (permission == PermissionStatus.granted) {
+
+      final current = await location.getLocation();
+
+
+      if (current.latitude != null &&
+          current.longitude != null) {
+
+        latitude = current.latitude!;
+        longitude = current.longitude!;
+
+        distanceMeters =
+            Geofence.distanceToCenter(
+              latitude,
+              longitude,
+            );
+
+
         gpsValid = true;
+
+        gpsMessage =
+            'GPS location acquired.';
+
+      } else {
+
+        gpsMessage =
+            'Location not available.';
       }
-    } catch (_) {
-      gpsMessage = 'GPS could not be resolved. Using demo coordinates.';
-      gpsValid = true;
+
+
+    } else {
+
+      gpsMessage =
+          'Location permission unavailable.';
     }
 
-    // Validation is deliberately evaluated in the required order. A failed
-    // step returns immediately so later checks cannot be treated as passed.
-    if (!gpsValid) {
-      return _failedSnapshot(
-        gpsMessage: gpsMessage,
-        latitude: latitude,
-        longitude: longitude,
-        distanceMeters: distanceMeters,
-      );
-    }
 
-    final geofenceValid = Geofence.isInsideWithRadius(
-      latitude,
-      longitude,
-      radiusMeters: sampleRadiusMeters,
-    );
-    final geofenceMessage = geofenceValid
-        ? 'Inside geofence boundary.'
-        : 'Outside geofence boundary.';
-    if (!geofenceValid) {
-      return _failedSnapshot(
-        gpsMessage: gpsMessage,
-        geofenceValid: false,
-        geofenceMessage: geofenceMessage,
-        latitude: latitude,
-        longitude: longitude,
-        distanceMeters: distanceMeters,
-      );
-    }
+  } catch (_) {
 
-    // Demo integrations expose these exact trusted values until native Wi-Fi
-    // and BLE scanners are wired in.
-    const wifiStatus = 'Trusted';
-    const wifiLabel = 'SSID: $demoWifiSsid';
-    final bleDetected = detectedBeaconId != null;
+    gpsMessage =
+        'GPS could not be resolved.';
+  }
 
-    final bleStatus = bleDetected
-    ? 'Beacon detected: $detectedBeaconId'
-    : 'No beacon detected';
-    final timeWindowValid = isTimeWindowValid();
-    final timeWindowMessage = describeTimeWindow();
 
-    return AttendanceSecuritySnapshot(
-      gpsValid: gpsValid,
+
+  // GPS MUST PASS FIRST
+  if (!gpsValid) {
+
+    return _failedSnapshot(
       gpsMessage: gpsMessage,
-      geofenceValid: geofenceValid,
+      latitude: latitude,
+      longitude: longitude,
+      distanceMeters: distanceMeters,
+    );
+  }
+
+
+
+  final geofenceValid =
+      Geofence.isInsideWithRadius(
+        latitude,
+        longitude,
+        radiusMeters: sampleRadiusMeters,
+      );
+
+
+  final geofenceMessage =
+      geofenceValid
+      ? 'Inside geofence boundary.'
+      : 'Outside geofence boundary.';
+
+
+
+  // Stop here if outside classroom
+  if (!geofenceValid) {
+
+    return _failedSnapshot(
+      gpsMessage: gpsMessage,
+      geofenceValid: false,
       geofenceMessage: geofenceMessage,
       latitude: latitude,
       longitude: longitude,
       distanceMeters: distanceMeters,
-      radiusMeters: sampleRadiusMeters,
-      wifiStatus: wifiStatus,
-      wifiLabel: wifiLabel,
-      bleStatus: bleStatus,
-      bleDetected: bleDetected,
-      timeWindowValid: timeWindowValid,
-      timeWindowMessage: timeWindowMessage,
-      fingerprintPassed: false,
-      otpVerified: false,
-      canProceed: false,
-      biometricAvailable: false,
     );
   }
 
-  static AttendanceSecuritySnapshot _failedSnapshot({
-    required String gpsMessage,
-    required double latitude,
-    required double longitude,
-    required double distanceMeters,
-    bool geofenceValid = false,
-    String geofenceMessage = 'Geofence check is pending.',
-  }) => AttendanceSecuritySnapshot(
-    gpsValid: false,
+
+
+  // ============================
+  // DEMO WIFI AND BLE STATUS
+  // ============================
+
+
+  final wifiStatus =
+      sessionActive
+      ? 'Trusted'
+      : 'Pending';
+
+
+  final wifiLabel =
+      sessionActive
+      ? 'SSID: $demoWifiSsid (Detected)'
+      : 'SSID: $demoWifiSsid';
+
+
+
+  final bleDetected =
+      sessionActive;
+
+
+  final bleStatus =
+      sessionActive
+      ? 'Beacon detected: $demoBeaconId'
+      : 'No beacon detected';
+
+
+
+  final timeWindowValid =
+    isTimeWindowValid();
+
+  final timeWindowMessage =
+    describeTimeWindow();
+
+    return AttendanceSecuritySnapshot(
+    gpsValid: gpsValid,
     gpsMessage: gpsMessage,
+
     geofenceValid: geofenceValid,
     geofenceMessage: geofenceMessage,
+
     latitude: latitude,
     longitude: longitude,
+
     distanceMeters: distanceMeters,
     radiusMeters: sampleRadiusMeters,
-    wifiStatus: 'Pending',
-    wifiLabel: 'SSID: $demoWifiSsid',
-    bleStatus: 'Pending',
-    bleDetected: false,
-    timeWindowValid: false,
-    timeWindowMessage: 'Complete the earlier security checks first.',
+
+   // DEMO WIFI
+    wifiStatus: wifiStatus,
+    wifiLabel: wifiLabel,
+
+    // DEMO BLE
+    bleStatus: bleStatus,
+    bleDetected: bleDetected,
+
+    timeWindowValid: timeWindowValid,
+    timeWindowMessage: timeWindowMessage,
+
     fingerprintPassed: false,
     otpVerified: false,
+
     canProceed: false,
     biometricAvailable: false,
   );
+}
 
+static AttendanceSecuritySnapshot _failedSnapshot({
+  required String gpsMessage,
+  required double latitude,
+  required double longitude,
+  required double distanceMeters,
+  bool geofenceValid = false,
+  String geofenceMessage = 'Geofence check is pending.',
+}) {
+  return AttendanceSecuritySnapshot(
+    gpsValid: false,
+    gpsMessage: gpsMessage,
+
+    geofenceValid: geofenceValid,
+    geofenceMessage: geofenceMessage,
+
+    latitude: latitude,
+    longitude: longitude,
+
+    distanceMeters: distanceMeters,
+    radiusMeters: sampleRadiusMeters,
+
+    // Demo mode: do not allow security layers before GPS/geofence pass
+    wifiStatus: 'Pending',
+    wifiLabel: 'SSID: $demoWifiSsid',
+
+    bleStatus: 'Pending',
+    bleDetected: false,
+
+    timeWindowValid: false,
+    timeWindowMessage:
+        'Complete the earlier security checks first.',
+
+    fingerprintPassed: false,
+    otpVerified: false,
+
+    canProceed: false,
+    biometricAvailable: false,
+  );
+}
   Future<Map<String, dynamic>> verifyFingerprint({
     required bool success,
   }) async {
