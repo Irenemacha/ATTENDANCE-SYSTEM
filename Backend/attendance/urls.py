@@ -24,7 +24,7 @@ urlpatterns = [
     path('check-in/', check_in, name='check_in'),
     path('check-out/', check_out, name='check_out'),
     path('active-session/', active_session, name='active_session'),
-     path('location-update/', location_update, name='location-update'),
+    path('location-update/', location_update, name='location-update'),
 
     # Lecturer dashboard
     path('lecturer/dashboard/', lecturer_dashboard, name='lecturer_dashboard'),

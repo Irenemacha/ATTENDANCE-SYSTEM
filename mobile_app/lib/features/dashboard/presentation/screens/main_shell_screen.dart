@@ -523,6 +523,7 @@ double? distanceFromClassroom;
         stats: attendanceStats,
         securitySnapshot: securitySnapshot,
         activeSession: activeSession,
+        sessionAvailable: activeSession != null,
         attendanceState: attendanceState,
         fingerprintPassed: fingerprintPassed,
         otpVerified: otpVerified,
@@ -602,6 +603,7 @@ class HomeTab extends StatelessWidget {
     required this.stats,
     required this.securitySnapshot,
     required this.activeSession,
+    required this.sessionAvailable,
     required this.attendanceState,
     required this.fingerprintPassed,
     required this.otpVerified,
@@ -618,6 +620,7 @@ class HomeTab extends StatelessWidget {
   final Map<String, dynamic>? user;
   final Map<String, dynamic>? stats;
   final AttendanceSecuritySnapshot? securitySnapshot;
+  final bool sessionAvailable;
   final Map<String, dynamic>? activeSession;
   final AttendanceFlowState attendanceState;
   final bool fingerprintPassed;
@@ -644,6 +647,8 @@ class HomeTab extends StatelessWidget {
     final attendanceColor = attendanceStatus == 'Fine'
         ? Colors.green
         : Colors.redAccent;
+
+    
 
     return RefreshIndicator(
       onRefresh: onRefresh,
@@ -719,9 +724,13 @@ class HomeTab extends StatelessWidget {
             snapshot: securitySnapshot,
             isLoading: isSecurityLoading,
             distanceFromClassroom: distanceFromClassroom,
+            hasActiveSession: activeSession != null,
           ),
           const SizedBox(height: 12),
-          _ConnectivityStatusCard(snapshot: securitySnapshot),
+          _ConnectivityStatusCard(
+            snapshot: securitySnapshot,
+            sessionAvailable: activeSession != null,
+          ),
           const SizedBox(height: 12),
           _IdentityVerificationCard(
             snapshot: securitySnapshot,
@@ -926,15 +935,19 @@ class _GeoAttendStatusCard extends StatelessWidget {
     required this.snapshot,
     required this.isLoading,
     required this.distanceFromClassroom,
+    required this.hasActiveSession,
   });
 
   final AttendanceSecuritySnapshot? snapshot;
   final bool isLoading;
   final double? distanceFromClassroom;
+  final bool hasActiveSession;
   
   @override
   Widget build(BuildContext context) {
-    final valid = snapshot?.gpsValid == true;
+   final valid =
+    hasActiveSession &&
+    snapshot?.gpsValid == true;
     return _GlassCard(
       title: 'Geo Attend Status',
       icon: Icons.location_on_outlined,
@@ -945,9 +958,14 @@ class _GeoAttendStatusCard extends StatelessWidget {
               children: [
                 _MetricRow(
                     label: 'Distance from classroom',
-                    value: distanceFromClassroom != null
-                         ? '${distanceFromClassroom!.toStringAsFixed(1)} m'
-                         : '-',
+                    value:
+
+                      !hasActiveSession
+                      ? '-'
+                    :
+                      distanceFromClassroom != null
+                      ? '${distanceFromClassroom!.toStringAsFixed(1)} m'
+                      : '-',
                 ),
                 _MetricRow(
                   label: 'Radius',
@@ -956,7 +974,12 @@ class _GeoAttendStatusCard extends StatelessWidget {
                 ),
                 _MetricRow(
                   label: 'Geofence status',
-                  value: valid
+                 value:
+
+                  !hasActiveSession
+                    ? 'No active session'
+                    :
+                    valid
                       ? 'Inside Geofence confirmed'
                       : 'Outside geofence',
                   valueColor: valid ? Colors.green : Colors.redAccent,
@@ -968,24 +991,42 @@ class _GeoAttendStatusCard extends StatelessWidget {
 }
 
 class _ConnectivityStatusCard extends StatelessWidget {
-  const _ConnectivityStatusCard({required this.snapshot});
+  const _ConnectivityStatusCard({
+    required this.snapshot,
+    required this.sessionAvailable,
+  });
+
   final AttendanceSecuritySnapshot? snapshot;
+  final bool sessionAvailable;
+
   @override
   Widget build(BuildContext context) {
+
+    final wifiValid =
+        sessionAvailable &&
+        snapshot?.wifiStatus == 'Trusted';
+
     return _GlassCard(
       title: 'Campus Network',
       icon: Icons.wifi_outlined,
-      accent: Colors.green,
+      accent: wifiValid ? Colors.green : Colors.orange,
       child: Column(
         children: [
           _MetricRow(
             label: 'WiFi',
-            value: snapshot?.wifiLabel ?? 'Campus network',
+            value: !sessionAvailable
+                ? 'Waiting for session'
+                : snapshot?.wifiLabel ?? 'Campus network',
           ),
+
           _MetricRow(
             label: 'Status',
-            value: snapshot?.wifiStatus ?? 'Trusted',
-            valueColor: Colors.green,
+            value: !sessionAvailable
+                ? 'Waiting for session'
+                : snapshot?.wifiStatus ?? 'Checking',
+            valueColor: wifiValid
+                ? Colors.green
+                : Colors.orange,
           ),
         ],
       ),
@@ -1008,14 +1049,12 @@ class _IdentityVerificationCard extends StatelessWidget {
   final Future<void> Function() onFingerprint;
   @override
   Widget build(BuildContext context) {
-     
-  
     
-  final enabled =
+    final enabled =
+    sessionAvailable &&
     snapshot?.geofenceValid == true &&
     snapshot?.wifiStatus == 'Trusted' &&
     snapshot?.bleDetected == true &&
-    sessionAvailable &&
     !verified;
 
 
@@ -1027,31 +1066,48 @@ class _IdentityVerificationCard extends StatelessWidget {
         children: [
           _MetricRow(
             label: 'GPS',
-            value: snapshot?.gpsValid == true ? 'Confirmed' : 'Pending',
-            valueColor: snapshot?.gpsValid == true
-                ? Colors.green
-                : Colors.orange,
+            value: !sessionAvailable
+                ? 'Waiting for session'
+                : snapshot?.gpsValid == true
+                  ? 'Confirmed'
+                  : 'Pending',
+            valueColor:
+              sessionAvailable && snapshot?.gpsValid == true
+              ? Colors.green
+              : Colors.orange,
           ),
           _MetricRow(
             label: 'WiFi',
-            value: snapshot?.wifiLabel ?? 'Pending',
-            valueColor: snapshot?.wifiStatus == 'Trusted'
+            value: !sessionAvailable
+                ? 'Waiting for session'
+                : snapshot?.wifiLabel ?? 'Pending',
+            valueColor:
+              sessionAvailable && snapshot?.wifiStatus == 'Trusted'
                 ? Colors.green
                 : Colors.orange,
           ),
           _MetricRow(
             label: 'BLE',
-            value: snapshot?.bleStatus ?? 'Pending',
+            value: !sessionAvailable
+              ? 'Waiting for session'
+              : snapshot?.bleStatus ?? 'Pending',
             valueColor: snapshot?.bleDetected == true
                 ? Colors.green
                 : Colors.orange,
           ),
           _MetricRow(
             label: 'Biometrics',
-            value: verified
-                ? (verifiedByOtp ? 'OTP verified' : 'Fingerprint verified')
-                : 'Pending',
-            valueColor: verified ? Colors.green : Colors.amber,
+            value: !sessionAvailable
+                ? 'Not required'
+                : verified
+                  ? (verifiedByOtp
+                      ? 'OTP verified'
+                      : 'Fingerprint verified')
+                      : 'Pending',
+            valueColor:
+              sessionAvailable && snapshot?.bleDetected == true
+                ? Colors.green
+                : Colors.orange,
           ),
           const SizedBox(height: 14),
           SizedBox(
@@ -1063,10 +1119,13 @@ class _IdentityVerificationCard extends StatelessWidget {
                 foregroundColor: Colors.white,
                 shape: const CircleBorder(),
               ),
-              onPressed: () async {
-              print("Fingerprint button pressed");
-              await onFingerprint();
-              },
+              onPressed: sessionAvailable
+              ? () async {
+                print("Fingerprint button pressed");
+                await onFingerprint();
+             }
+              : null,
+              
               child: Icon(
                 verifiedByOtp ? Icons.sms_outlined : Icons.fingerprint,
                 size: 64,
