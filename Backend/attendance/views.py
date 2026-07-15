@@ -25,6 +25,7 @@ from students.models import Student
 from .models import AttendanceSession, Attendance, MovementLog
 from .utils import calculate_distance
 
+
 def is_within_geofence(distance, radius):
     return distance <= radius
 
@@ -324,22 +325,30 @@ def check_in(request):
 
 
     session = AttendanceSession.objects.filter(
-        id=session_id,
-        is_active=True
-    ).first()
+    id=session_id,
+    is_active=True
+).first()
+
+
+    if not session:
+        return Response(
+        {
+            "error": "Active session not found"
+        },
+        status=404
+    )
+
+
     expected_beacon = session.classroom.beacon
-    
-    # DEMO BLE SCANNER RESULT
-    detected_beacon_id = "Beacon 1C"
 
 
-    if detected_beacon_id != expected_beacon.beacon_id:
+    if beacon_id != expected_beacon.beacon_id:
 
         return Response(
         {
             "error":"Wrong classroom beacon detected",
             "expected": expected_beacon.beacon_id,
-            "detected": detected_beacon_id
+            "detected": beacon_id
         },
         status=400
     )
@@ -534,6 +543,14 @@ def check_out(request):
 
 
     session = attendance.session
+    
+    if not session:
+        return Response(
+        {
+            "error":"Session not found"
+        },
+        status=404
+    )
 
 
 
@@ -603,33 +620,52 @@ def check_out(request):
 
     # BLE classroom validation
 
-    if session.classroom:
-
-        expected_beacon = session.classroom.beacon
-
-    if beacon_id != expected_beacon.beacon_id:
-
+    if not session.classroom:
         return Response(
-            {
-                "error": "Wrong classroom BLE beacon detected"
-            },
-            status=403
-        )
-            
-    state, _ = UserSessionState.objects.get_or_create(
-        user=user
+        {
+            "error": "No classroom beacon configured for this session"
+        },
+        status=403
     )
 
 
-    if state.current_state != "ATTENDANCE_GRANTED":
+    expected_beacon = session.classroom.beacon
 
+
+    if not expected_beacon:
         return Response(
-            {
-                "error": "Fingerprint verification required",
-                "state": state.current_state
-            },
-            status=403
-        )
+        {
+            "error": "No BLE beacon assigned to this classroom"
+        },
+        status=403
+    )
+
+
+    if beacon_id != expected_beacon.beacon_id:
+        return Response(
+        {
+            "error": "Wrong classroom BLE beacon detected"
+        },
+        status=403
+    )
+
+
+    state, _ = UserSessionState.objects.get_or_create(
+    user=user
+)
+
+
+    if state.current_state not in [
+    "ATTENDANCE_GRANTED",
+    "CHECKED_IN"
+    ]:
+        return Response(
+        {
+            "error": "Fingerprint verification required",
+            "state": state.current_state
+        },
+        status=403
+    )
 
 
 
@@ -824,7 +860,7 @@ def end_session(request):
         )
 
 
-        return Response(
+    return Response(
         {
             "message": "Session ended successfully",
             "session_id": session.id
@@ -1067,7 +1103,7 @@ def session_report(request, session_id):
 @api_view(["GET"])
 @permission_classes([IsStudent])
 def active_session(request):
-    auto_close_expired_sessions()
+    
 
     try:
         student = request.user.student
@@ -1141,6 +1177,76 @@ def active_session(request):
             "auto_closed": session.auto_closed,
             
         })
+        
+        
+    # Recently ended session waiting for checkout
+
+    ended_session = AttendanceSession.objects.filter(
+    course=student.course,
+    is_active=False,
+    checkout_deadline__gte=timezone.now()
+    ).order_by("-end_time").first()
+
+
+    if ended_session:
+
+        return Response({
+        "session_exists": True,
+        "session_id": ended_session.id,
+        "session_active": False,
+        "session_ended": True,
+        "course": ended_session.course.name,
+        "subject": ended_session.subject.name,
+        "attendance_state": "SESSION_ENDED",
+        "can_check_in": False,
+        "can_check_out": True
+    })
+        
+    # Ended session waiting for checkout
+
+    pending_checkout = Attendance.objects.filter(
+    student=student,
+    check_in_time__isnull=False,
+    check_out_time__isnull=True,
+    session__is_active=False
+).select_related(
+    "session"
+).order_by(
+    "-session__end_time"
+).first()
+
+
+    if pending_checkout:
+
+        session = pending_checkout.session
+
+        return Response({
+
+        "session_exists": True,
+
+        "session_id": session.id,
+
+        "session_active": False,
+
+        "session_ended": True,
+
+        "course": session.course.name,
+
+        "subject": session.subject.name,
+
+        "attendance_state": "SESSION_ENDED",
+
+        "checked_in": True,
+
+        "checked_out": False,
+
+        "can_check_in": False,
+
+        "can_check_out": (
+            timezone.now() <= session.checkout_deadline
+        )
+
+    })
 
     # Active lecturer session available
     session = AttendanceSession.objects.filter(
@@ -1154,7 +1260,7 @@ def active_session(request):
 
         distance = None
 
-    return Response({
+        return Response({
         "session_exists": True,
         "distance": distance,
         "session_id": session.id,
@@ -1175,6 +1281,7 @@ def active_session(request):
             else None
         ),
     })
+
 
     return Response({
         "session_exists": False,

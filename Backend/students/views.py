@@ -23,6 +23,8 @@ def student_dashboard(request):
         total_sessions = AttendanceSession.objects.filter(
             course=student.course
         ).count()
+        
+        print("DEBUG TOTAL SESSIONS:", total_sessions)
 
         # A session counts as attended only after its matching check-in and
         # check-out have both been recorded. This keeps the percentage based

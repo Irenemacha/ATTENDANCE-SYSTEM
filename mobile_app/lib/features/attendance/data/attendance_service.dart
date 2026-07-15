@@ -46,6 +46,7 @@ class AttendanceService {
         "latitude": latitude,
         "longitude": longitude,
         "wifi_bssid": "ARUSOPASUANET",
+        "beacon_id": "Beacon 1C",
       }),
     );
 
@@ -93,6 +94,7 @@ class AttendanceService {
         "latitude": latitude,
         "longitude": longitude,
         "wifi_bssid": "ARUSOPASUANET",
+        "beacon_id": "Beacon 1C",
       }),
     );
 

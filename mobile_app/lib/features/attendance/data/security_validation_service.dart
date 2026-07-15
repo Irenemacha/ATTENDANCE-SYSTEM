@@ -23,6 +23,8 @@ class AttendanceSecuritySnapshot {
     required this.otpVerified,
     required this.canProceed,
     required this.biometricAvailable,
+    required this.sessionEnded,
+    required this.canCheckOut,
   });
 
   final bool gpsValid;
@@ -43,6 +45,8 @@ class AttendanceSecuritySnapshot {
   final bool otpVerified;
   final bool canProceed;
   final bool biometricAvailable;
+  final bool sessionEnded;
+  final bool canCheckOut;
 }
 
 class AttendanceSecurityService {
@@ -69,6 +73,8 @@ class AttendanceSecurityService {
   static Future<AttendanceSecuritySnapshot> evaluate({
   required Location location,
   required bool sessionActive,
+  required bool sessionEnded,
+  required bool canCheckOut,
   String? detectedBeaconId,
 }) async {
   const fallbackLat = sampleLat;
@@ -256,6 +262,9 @@ class AttendanceSecurityService {
 
     canProceed: false,
     biometricAvailable: false,
+
+    sessionEnded: sessionEnded,
+    canCheckOut: canCheckOut,
   );
 }
 
@@ -296,6 +305,10 @@ static AttendanceSecuritySnapshot _failedSnapshot({
 
     canProceed: false,
     biometricAvailable: false,
+
+    sessionEnded: false,
+    canCheckOut: false,
+    
   );
 }
   Future<Map<String, dynamic>> verifyFingerprint({
