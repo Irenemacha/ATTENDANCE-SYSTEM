@@ -1,5 +1,5 @@
 class ApiConstants {
-  static const String mode = "dev"; // dev | emulator | prod
+  static const String mode = "prod"; // dev | emulator | prod
 
   static String get baseUrl {
     switch (mode) {
@@ -8,7 +8,7 @@ class ApiConstants {
       case "emulator":
         return "http://10.0.2.2:8000/api/";
       case "prod":
-        return "https://attendance.schoolsoft.online/api/";
+        return "https://attendace-system-production.up.railway.app/api/";
       default:
         return "http://127.0.0.1:8000/api/";
     }
