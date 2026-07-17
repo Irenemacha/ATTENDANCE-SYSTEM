@@ -1,3 +1,3 @@
 class ApiConfig {
-  static const String baseUrl = "https://attendance.schoolsoft.online/api/";
+  static const String baseUrl = "https://attendace-system-production.up.railway.app/api/";
 }
