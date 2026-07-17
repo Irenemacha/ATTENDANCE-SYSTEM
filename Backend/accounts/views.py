@@ -106,11 +106,16 @@ def me(request):
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def device_login(request):
+    print("DATABASE USERS:")
+    print(list(User.objects.values_list("username", flat=True)))
     username = request.data.get("username")
+    print("USERNAME RECEIVED:", repr(username))
+
     password = request.data.get("password")
     device_id = request.data.get("device_id")
 
     user = User.objects.filter(username=username).first()
+    print("USER FOUND:", user)
 
     print("========== LOGIN DEBUG ==========")
     print("USERNAME RECEIVED:", username)
