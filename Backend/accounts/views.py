@@ -107,7 +107,6 @@ def me(request):
 @permission_classes([AllowAny])
 def device_login(request):
     username = request.data.get("username")
-    user = User.objects.get(username=username)
     password = request.data.get("password")
     device_id = request.data.get("device_id")
 
