@@ -97,5 +97,14 @@ class TimetableAdmin(GroupFilteredUserAdminMixin, admin.ModelAdmin):
     search_fields = ("course__name", "course__code", "lecturer__username", "room")
     list_filter = ("day", "course")
     
-admin.site.register(Classroom)
+@admin.register(Classroom)
+class ClassroomAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "room_name",
+        "room_number",
+        "latitude",
+        "longitude",
+        "radius_meters",
+    )
 admin.site.register(BLEBeacon)
