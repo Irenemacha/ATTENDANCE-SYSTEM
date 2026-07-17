@@ -802,32 +802,29 @@ def end_session(request):
         ).total_seconds()
 
 
-       attendance.attendance_percentage = min(
+    if total > 0:
+        attendance.attendance_percentage = min(
         (duration / total) * 100,
         100
-       )
+    )
+    else:
+        attendance.attendance_percentage = 0
 
 
-       attendance.status = (
+        attendance.status = (
         "PARTIAL_ATTENDANCE"
         if attendance.attendance_percentage < 80
         else "PRESENT"
        )
 
 
-       attendance.save()
+        attendance.save()
 
 
     students = Student.objects.filter(
     course=session.course
 )
 
-
-    Notification.objects.create(
-        student=student,
-        title="Session ended",
-        message=f"{session.subject.name} session has ended."
-    )
 
     students = Student.objects.filter(
         course=session.course
