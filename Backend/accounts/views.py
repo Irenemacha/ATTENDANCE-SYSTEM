@@ -110,6 +110,8 @@ def device_login(request):
     print(list(User.objects.values_list("username", flat=True)))
     username = request.data.get("username")
     print("USERNAME RECEIVED:", repr(username))
+    print("USERNAME LENGTH:", len(username) if username else None)
+    print("USERNAME BYTES:", username.encode() if username else None)
 
     password = request.data.get("password")
     device_id = request.data.get("device_id")
