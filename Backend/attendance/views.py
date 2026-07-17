@@ -755,10 +755,7 @@ def check_out(request):
 @permission_classes([IsLecturer])
 def end_session(request):
 
-    session_id = request.data.get("session_id")
-
     session = AttendanceSession.objects.filter(
-        id=session_id,
         lecturer=request.user,
         is_active=True
     ).first()
@@ -766,7 +763,7 @@ def end_session(request):
     if not session:
         return Response(
             {
-                "error": "Active session not found"
+                "error": "No active session"
             },
             status=404
         )

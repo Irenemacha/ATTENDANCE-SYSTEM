@@ -198,6 +198,8 @@ def device_login(request):
         recipient_list=[user.email],
         fail_silently=False,
     )
+    
+    
 
     print("OTP EMAIL SENT")
     # ==========================
