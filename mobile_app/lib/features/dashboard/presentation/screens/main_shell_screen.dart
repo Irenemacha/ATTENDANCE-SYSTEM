@@ -49,8 +49,9 @@ class _MainShellScreenState extends State<MainShellScreen>
     WidgetsBinding.instance.addObserver(this);
     _loadInitialData();
     _sessionTimer = Timer.periodic(const Duration(seconds: 15), (_) {
-      refreshSessionStatus(showSnack: false);
-    });
+    _loadInitialData();
+  });
+    
   }
 
   @override
@@ -63,8 +64,9 @@ class _MainShellScreenState extends State<MainShellScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      refreshSessionStatus(showSnack: false);
+      _loadInitialData();
     }
+    
   }
 
   @override
@@ -175,8 +177,6 @@ class _MainShellScreenState extends State<MainShellScreen>
 
   Future<void> refreshSessionStatus({bool showSnack = true}) async {
     final result = await attendanceService.getActiveSession();
-    distanceFromClassroom =
-    (result['distance'] as num?)?.toDouble();
     print(result);
     if (!mounted) return;
 
@@ -573,7 +573,7 @@ double? distanceFromClassroom;
         stats: attendanceStats,
         securitySnapshot: securitySnapshot,
         activeSession: activeSession,
-        sessionAvailable: activeSession != null,
+        sessionAvailable: hasActiveSession,
         attendanceState: attendanceState,
         fingerprintPassed: fingerprintPassed,
         otpVerified: otpVerified,
@@ -773,8 +773,8 @@ class HomeTab extends StatelessWidget {
           _GeoAttendStatusCard(
             snapshot: securitySnapshot,
             isLoading: isSecurityLoading,
-            distanceFromClassroom: distanceFromClassroom,
-            hasActiveSession: activeSession != null,
+            distanceFromClassroom: securitySnapshot?.distanceMeters,
+            hasActiveSession: sessionAvailable,
           ),
           const SizedBox(height: 12),
           _ConnectivityStatusCard(

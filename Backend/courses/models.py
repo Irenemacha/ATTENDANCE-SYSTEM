@@ -132,6 +132,8 @@ class Timetable(models.Model):
 # ========================
 
 class Classroom(models.Model):
+    id = models.AutoField(primary_key=True)
+    
     room_name = models.CharField(max_length=100)
     room_number = models.CharField(max_length=50)
 

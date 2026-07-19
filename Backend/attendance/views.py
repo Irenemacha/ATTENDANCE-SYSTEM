@@ -781,50 +781,37 @@ def end_session(request):
     session.save()
     
     open_records = Attendance.objects.filter(
-    session=session,
-    check_out_time__isnull=True
-)
-
-
-    for attendance in open_records:
-
-       attendance.check_out_time = session.end_time
-
-       duration = (
-        attendance.check_out_time -
-        attendance.check_in_time
-       ).total_seconds()
-
-
-       total = (
+        session=session,
+        check_out_time__isnull=True
+    )
+    total = (
         session.end_time -
         session.start_time
+    ).total_seconds()
+
+    for attendance in open_records:
+        attendance.check_out_time = session.end_time
+
+        duration = (
+            attendance.check_out_time -
+            attendance.check_in_time
         ).total_seconds()
 
-
-    if total > 0:
-        attendance.attendance_percentage = min(
-        (duration / total) * 100,
-        100
-    )
-    else:
-        attendance.attendance_percentage = 0
-
+        if total > 0:
+            attendance.attendance_percentage = min(
+                (duration / total) * 100,
+                100
+            )
+        else:
+            attendance.attendance_percentage = 0
 
         attendance.status = (
-        "PARTIAL_ATTENDANCE"
-        if attendance.attendance_percentage < 80
-        else "PRESENT"
-       )
-
+            "PARTIAL_ATTENDANCE"
+            if attendance.attendance_percentage < 80
+            else "PRESENT"
+        )
 
         attendance.save()
-
-
-    students = Student.objects.filter(
-    course=session.course
-)
-
 
     students = Student.objects.filter(
         course=session.course

@@ -31,6 +31,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final deviceId = await DeviceId.getDeviceId();
+      debugPrint("GENERATED DEVICE ID: $deviceId");
+      debugPrint("DEVICE ID LENGTH: ${deviceId.length}");
 
       final result = await AuthService().deviceLogin(
         username,

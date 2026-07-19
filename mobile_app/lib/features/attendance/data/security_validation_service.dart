@@ -2,6 +2,7 @@ import 'package:location/location.dart';
 import 'package:mobile_app/core/security/geofence.dart';
 import 'package:mobile_app/features/attendance/data/attendance_service.dart';
 import 'package:mobile_app/services/auth_service.dart';
+import 'package:geolocator/geolocator.dart' as geo;
 
 class AttendanceSecuritySnapshot {
   const AttendanceSecuritySnapshot({
@@ -86,72 +87,70 @@ class AttendanceSecurityService {
   double latitude = fallbackLat;
   double longitude = fallbackLng;
 
-  double distanceMeters =
-      Geofence.distanceToCenter(fallbackLat, fallbackLng);
+  double distanceMeters = 0;
 
 
   try {
-    final enabled = await location.serviceEnabled();
 
-    if (!enabled) {
-      final requested = await location.requestService();
+  final enabled = await location.serviceEnabled();
 
-      if (!requested) {
-        gpsMessage =
-            'Location services are off';
-      }
-    }
-
-
-    var permission = await location.hasPermission();
-
-    if (permission == PermissionStatus.denied) {
-      permission = await location.requestPermission();
-    }
-
-
-    if (permission == PermissionStatus.granted) {
-
-      final current = await location.getLocation();
-
-
-      if (current.latitude != null &&
-          current.longitude != null) {
-
-        latitude = current.latitude!;
-        longitude = current.longitude!;
-
-        distanceMeters =
-            Geofence.distanceToCenter(
-              latitude,
-              longitude,
-            );
-
-
-        gpsValid = true;
-
-        gpsMessage =
-            'GPS location acquired.';
-
-      } else {
-
-        gpsMessage =
-            'Location not available.';
-      }
-
-
-    } else {
-
-      gpsMessage =
-          'Location permission unavailable.';
-    }
-
-
-  } catch (_) {
-
-    gpsMessage =
-        'GPS could not be resolved.';
+  if (!enabled) {
+    return _failedSnapshot(
+      gpsMessage: "GPS is disabled",
+      latitude: latitude,
+      longitude: longitude,
+      distanceMeters: distanceMeters,
+    );
   }
+
+
+  // REQUEST LOCATION PERMISSION
+  geo.LocationPermission permission =
+    await geo.Geolocator.checkPermission();
+
+  if (permission == geo.LocationPermission.denied) {
+    permission = await geo.Geolocator.requestPermission();();
+  }
+
+  if (permission == geo.LocationPermission.deniedForever) {
+    return _failedSnapshot(
+      gpsMessage: "Location permission permanently denied",
+      latitude: latitude,
+      longitude: longitude,
+      distanceMeters: distanceMeters,
+    );
+  }
+
+
+  // GET REAL PHONE LOCATION
+  final position = await geo.Geolocator.getCurrentPosition(
+  locationSettings: const geo.LocationSettings(
+    accuracy: geo.LocationAccuracy.high,
+  ),
+);
+
+
+  latitude = position.latitude;
+  longitude = position.longitude;
+
+
+  // CALCULATE REAL DISTANCE
+  distanceMeters = Geofence.distanceToCenter(
+    latitude,
+    longitude,
+  );
+
+
+  gpsValid = true;
+
+  gpsMessage = "GPS location obtained";
+
+
+} catch(e) {
+
+  gpsMessage = "GPS error: $e";
+
+}
 
 
 
