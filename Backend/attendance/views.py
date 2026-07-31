@@ -5,11 +5,10 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from geopy.distance import geodesic
-from students.models import Notification
-from students.models import Student
+from students.models import Student, Notification
 
 
-from .serializers import NotificationSerializer
+from students.serializers import NotificationSerializer
 
 from accounts.models import UserSessionState
 from accounts.permissions import IsLecturer, IsStudent

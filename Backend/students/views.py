@@ -1,13 +1,10 @@
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from students.models import Student, Notification
+from .models import Student, Notification
 from rest_framework.permissions import IsAuthenticated
 
-from .models import Notification
-from .serializers import NotificationSerializer
-
 from accounts.permissions import IsStudent
-from .models import Student
+
 from django.db.models import Sum
 from attendance.models import Attendance, AttendanceSession
 
@@ -84,25 +81,30 @@ def student_dashboard(request):
 @permission_classes([IsAuthenticated])
 def my_notifications(request):
 
-    student = request.user.student
+    try:
+        student = Student.objects.get(user=request.user)
 
-    notifications = Notification.objects.filter(
-        student=student
-    ).order_by("-created_at")
-    
-    serializer = NotificationSerializer(
-    notifications,
-    many=True
-)
+        notifications = Notification.objects.filter(
+            student=student
+        ).order_by("-created_at")
 
-    data = [
-        {
-            "title": n.title,
-            "message": n.message,
-            "read": n.is_read,
-            "created": n.created_at
-        }
-        for n in notifications
-    ]
+        data = [
+            {
+                "title": n.title,
+                "message": n.message,
+                "read": n.is_read,
+                "created": n.created_at
+            }
+            for n in notifications
+        ]
 
-    return Response(data)
+        return Response(data)
+
+    except Student.DoesNotExist:
+        return Response(
+            {
+                "success": False,
+                "message": "Student profile not found"
+            },
+            status=404
+        )
