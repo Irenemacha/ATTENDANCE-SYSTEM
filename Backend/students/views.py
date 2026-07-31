@@ -5,7 +5,8 @@ from rest_framework.permissions import IsAuthenticated
 
 from accounts.permissions import IsStudent
 
-from django.db.models import Sum
+from django.db.models import Sum, count
+
 from attendance.models import Attendance, AttendanceSession
 
 @api_view(["GET"])
@@ -84,9 +85,18 @@ def my_notifications(request):
     try:
         student = Student.objects.get(user=request.user)
 
+        # Get only latest 20 notifications
         notifications = Notification.objects.filter(
             student=student
-        ).order_by("-created_at")
+        ).order_by("-created_at")[:20]
+
+
+        # Count unread notifications
+        unread_count = Notification.objects.filter(
+            student=student,
+            is_read=False
+        ).count()
+
 
         data = [
             {
@@ -98,7 +108,13 @@ def my_notifications(request):
             for n in notifications
         ]
 
-        return Response(data)
+
+        return Response({
+            "unread_count": unread_count,
+            "total_returned": len(data),
+            "notifications": data
+        })
+
 
     except Student.DoesNotExist:
         return Response(
