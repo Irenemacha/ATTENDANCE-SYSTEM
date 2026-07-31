@@ -157,3 +157,35 @@ def mark_notification_read(request, notification_id):
             },
             status=404
         )
+        
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def mark_all_notifications_read(request):
+
+    try:
+        student = Student.objects.get(
+            user=request.user
+        )
+
+        updated = Notification.objects.filter(
+            student=student,
+            is_read=False
+        ).update(
+            is_read=True
+        )
+
+        return Response({
+            "success": True,
+            "message": "All notifications marked as read",
+            "updated_count": updated
+        })
+
+
+    except Student.DoesNotExist:
+        return Response(
+            {
+                "success": False,
+                "message": "Student profile not found"
+            },
+            status=404
+        )
