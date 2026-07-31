@@ -8,6 +8,9 @@ from geopy.distance import geodesic
 from students.models import Notification
 from students.models import Student
 
+
+from .serializers import NotificationSerializer
+
 from accounts.models import UserSessionState
 from accounts.permissions import IsLecturer, IsStudent
 from accounts.services import advance_user_state
@@ -261,7 +264,9 @@ def start_session(request):
     override_duration_minutes=120
 )
     
-    students = Student.objects.all()
+    students = Student.objects.filter(
+    course=session.course
+    )
 
     for student in students:
         Notification.objects.create(
@@ -716,11 +721,13 @@ def check_out(request):
 
     attendance.save()
     
+    percentage = attendance.attendance_percentage or 0
+
     Notification.objects.create(
     student=student,
     title="Checkout successful",
-    message=f"Attendance completed with {attendance.attendance_percentage:.0f}% attendance."
-)
+    message=f"Attendance completed with {percentage:.0f}% attendance."
+    )
 
 
 
@@ -1462,3 +1469,31 @@ def location_update(request):
             "inside_geofence": inside_geofence
         }
     )
+    
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def notifications(request):
+
+    student = Student.objects.filter(
+        user=request.user
+    ).first()
+
+    if not student:
+        return Response(
+            {
+                "error": "Student not found"
+            },
+            status=404
+        )
+
+    notification_list = Notification.objects.filter(
+        student=student
+    ).order_by("-created_at")
+
+    serializer = NotificationSerializer(
+        notification_list,
+        many=True
+    )
+
+    return Response(serializer.data)
+

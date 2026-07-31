@@ -9,7 +9,8 @@ from .views import (
     attendance_report,
     session_report,
     active_session,
-    location_update
+    location_update,
+    notifications
 )
 
 urlpatterns = [
@@ -30,6 +31,7 @@ urlpatterns = [
     path('lecturer/dashboard/', lecturer_dashboard, name='lecturer_dashboard'),
     path('report/', attendance_report, name='attendance_report'),
     path('session-report/<int:session_id>/', session_report, name='session_report'),
+    path('notifications/', notifications, name='notifications'),
 ]
 
 
