@@ -5,7 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 
 from accounts.permissions import IsStudent
 
-from django.db.models import Sum, count
+from django.db.models import Sum
 
 from attendance.models import Attendance, AttendanceSession
 
