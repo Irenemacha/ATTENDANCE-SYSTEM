@@ -124,3 +124,35 @@ def my_notifications(request):
             },
             status=404
         )
+        
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def mark_notification_read(request, notification_id):
+
+    try:
+        student = Student.objects.get(
+            user=request.user
+        )
+
+        notification = Notification.objects.get(
+            id=notification_id,
+            student=student
+        )
+
+        notification.is_read = True
+        notification.save()
+
+        return Response({
+            "success": True,
+            "message": "Notification marked as read"
+        })
+
+
+    except Notification.DoesNotExist:
+        return Response(
+            {
+                "success": False,
+                "message": "Notification not found"
+            },
+            status=404
+        )

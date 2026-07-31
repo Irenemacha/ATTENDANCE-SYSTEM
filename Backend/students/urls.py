@@ -1,6 +1,6 @@
 from django.urls import path
-from .views import student_dashboard
-from .views import my_notifications
+from .views import student_dashboard, my_notifications, mark_notification_read
+
 
 
 urlpatterns = [
@@ -8,5 +8,7 @@ urlpatterns = [
    
    
     path("notifications/",my_notifications,name="notifications"),
+    path("notifications/<int:notification_id>/read/", mark_notification_read,name="mark-notification-read"),
+
     
 ]
