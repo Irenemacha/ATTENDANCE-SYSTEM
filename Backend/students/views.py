@@ -100,6 +100,7 @@ def my_notifications(request):
 
         data = [
             {
+                "id": n.id,
                 "title": n.title,
                 "message": n.message,
                 "read": n.is_read,
