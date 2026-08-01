@@ -159,7 +159,7 @@ def device_login(request):
     # DEVICE ALREADY VERIFIED
     # ==========================
     if device:
-        advance_user_state(user, "device_success")
+        advance_user_state(user, "fingerprint_success")
         refresh = RefreshToken.for_user(user)
 
         return Response({
@@ -326,7 +326,12 @@ def verify_device_otp(request):
             device_id=device_id,
             defaults={"is_verified": True},
         )
-    advance_user_state(user, "device_success")
+    state, _ = UserSessionState.objects.get_or_create(
+    user=user
+)
+
+    state.current_state = "ATTENDANCE_GRANTED"
+    state.save(update_fields=["current_state"])
     refresh = RefreshToken.for_user(user)
     return Response({
         "message": "OTP verified successfully",
