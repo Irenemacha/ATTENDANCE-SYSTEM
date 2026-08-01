@@ -36,7 +36,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       if (!mounted) return;
 
       if (success) {
-        Navigator.of(context).pushReplacementNamed('/home');
+        Navigator.of(context).pop(true);
       } else {
         ScaffoldMessenger.of(
           context,

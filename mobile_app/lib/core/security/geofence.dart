@@ -1,8 +1,6 @@
 import 'dart:math';
 
 class Geofence {
-  static const double classroomLat = -6.7634967;
-  static const double classroomLng = 39.2147658;
   static const double allowedRadiusMeters = 20;
 
   static double _distance(
@@ -11,12 +9,13 @@ class Geofence {
     double lat2,
     double lon2,
   ) {
-    const R = 6371000;
+    const double earthRadius = 6371000;
 
     final dLat = _degToRad(lat2 - lat1);
     final dLon = _degToRad(lon2 - lon1);
 
-    final a = sin(dLat / 2) * sin(dLat / 2) +
+    final a =
+        sin(dLat / 2) * sin(dLat / 2) +
         cos(_degToRad(lat1)) *
             cos(_degToRad(lat2)) *
             sin(dLon / 2) *
@@ -24,21 +23,42 @@ class Geofence {
 
     final c = 2 * atan2(sqrt(a), sqrt(1 - a));
 
-    return R * c;
+    return earthRadius * c;
   }
 
-  static double _degToRad(double deg) => deg * (pi / 180);
-
-  static bool isInside(double lat, double lng) {
-    return isInsideWithRadius(lat, lng, radiusMeters: allowedRadiusMeters);
+  static double _degToRad(double degrees) {
+    return degrees * (pi / 180);
   }
 
-  static bool isInsideWithRadius(double lat, double lng, {double radiusMeters = allowedRadiusMeters}) {
-    final distance = _distance(lat, lng, classroomLat, classroomLng);
+  static double distanceToCenter(
+    double lat,
+    double lng, {
+    required double centerLat,
+    required double centerLng,
+  }) {
+    return _distance(
+      lat,
+      lng,
+      centerLat,
+      centerLng,
+    );
+  }
+
+  static bool isInsideWithRadius(
+    double lat,
+    double lng, {
+    required double centerLat,
+    required double centerLng,
+    required double radiusMeters,
+  }) {
+    final distance = distanceToCenter(
+      lat,
+      lng,
+      centerLat: centerLat,
+      centerLng: centerLng,
+    );
+
     return distance <= radiusMeters;
   }
-
-  static double distanceToCenter(double lat, double lng) {
-    return _distance(lat, lng, classroomLat, classroomLng);
-  }
 }
+

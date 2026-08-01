@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:mobile_app/features/attendance/data/attendance_service.dart';
+import 'package:mobile_app/features/attendance/presentation/screens/otp_fallback_screen.dart';
 
 class FingerprintScanScreen extends StatefulWidget {
   const FingerprintScanScreen({super.key});
@@ -106,8 +107,16 @@ class _FingerprintScanScreenState extends State<FingerprintScanScreen> {
         const SnackBar(content: Text('Fingerprint failed 3 times. Use OTP.')),
       );
       await Future<void>.delayed(const Duration(milliseconds: 350));
-      if (mounted) _openOtpFallback();
-      return;
+      if (mounted) {
+    final verified = await _openOtpFallback();
+
+    if (!mounted) return;
+
+    if (verified) {
+    Navigator.pop(context, true);
+    }
+  }
+    return;
     }
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -115,14 +124,16 @@ class _FingerprintScanScreenState extends State<FingerprintScanScreen> {
     );
   }
 
-  void _openOtpFallback() {
-    Navigator.pushReplacementNamed(
-      context,
-      '/otp-fallback',
-      arguments: {'fingerprintAttempts': fingerprintAttempts},
-    );
-  }
+  Future<bool> _openOtpFallback() async {
+  final result = await Navigator.push<bool>(
+    context,
+    MaterialPageRoute<bool>(
+      builder: (_) => const OtpFallbackScreen(),
+    ),
+  );
 
+  return result == true;
+}
   void _goBack() {
     if (Navigator.canPop(context)) {
       Navigator.pop(context);

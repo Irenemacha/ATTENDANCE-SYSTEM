@@ -8,6 +8,7 @@ import 'package:mobile_app/features/auth/presentation/screens/landing_screen.dar
 import 'package:mobile_app/features/auth/presentation/screens/login_screen.dart';
 import 'package:mobile_app/features/auth/presentation/screens/otp_verification_screen.dart';
 import 'package:mobile_app/features/dashboard/presentation/screens/main_shell_screen.dart';
+import 'package:mobile_app/features/notifications/presentation/notification_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -41,6 +42,7 @@ class MyApp extends StatelessWidget {
         '/home': (context) => const MainShellScreen(),
         '/fingerprint-scan': (context) => const FingerprintScanScreen(),
         '/otp-fallback': (context) => const OtpFallbackScreen(),
+        '/notifications': (context) => const NotificationScreen(),
       },
     );
   }

@@ -7,6 +7,8 @@ import 'package:mobile_app/features/attendance/data/attendance_service.dart';
 import 'package:mobile_app/features/attendance/data/security_validation_service.dart';
 import 'package:mobile_app/features/dashboard/data/dashboard_service.dart';
 import 'package:mobile_app/services/auth_service.dart';
+import 'package:mobile_app/features/notifications/presentation/notification_screen.dart';
+import 'package:mobile_app/features/attendance/presentation/screens/fingerprint_scan_screen.dart';
 
 const _primary = Color(0xFF2563EB);
 const _primaryDark = Color(0xFF0F172A);
@@ -152,11 +154,28 @@ class _MainShellScreenState extends State<MainShellScreen>
   });
 }
 
+  
   Future<void> evaluateSecurity() async {
-    setState(() => isSecurityLoading = true);
+  if (!mounted) return;
+
+  setState(() => isSecurityLoading = true);
+
+  DateTime? sessionStartTime;
+  DateTime? sessionEndTime;
+
+  try {
+    final rawStart = activeSession?['start_time'];
+    final rawEnd = activeSession?['end_time'];
+
+    if (rawStart != null) {
+      sessionStartTime = DateTime.tryParse(rawStart.toString());
+    }
+
+    if (rawEnd != null) {
+      sessionEndTime = DateTime.tryParse(rawEnd.toString());
+    }
 
     final snapshot = await AttendanceSecurityService.evaluate(
-
       location: location,
 
       detectedBeaconId: activeSession?['beacon_id'],
@@ -167,13 +186,35 @@ class _MainShellScreenState extends State<MainShellScreen>
 
       canCheckOut: activeSession?['can_check_out'] == true,
 
+      radiusMeters:
+          (activeSession?['radius_meters'] as num?)?.toDouble() ?? 0,
+
+      sessionLatitude:
+          (activeSession?['latitude'] as num?)?.toDouble(),
+
+      sessionLongitude:
+          (activeSession?['longitude'] as num?)?.toDouble(),
+
+      sessionStartTime: sessionStartTime,
+      sessionEndTime: sessionEndTime,
     );
+
     if (!mounted) return;
+
     setState(() {
       securitySnapshot = snapshot;
       isSecurityLoading = false;
     });
+  } catch (e) {
+    if (!mounted) return;
+
+    setState(() {
+      isSecurityLoading = false;
+    });
+
+    print('SECURITY EVALUATION ERROR: $e');
   }
+}
 
   Future<void> refreshSessionStatus({bool showSnack = true}) async {
     final result = await attendanceService.getActiveSession();
@@ -230,7 +271,9 @@ class _MainShellScreenState extends State<MainShellScreen>
     activeSessionId != null &&
     activeSession?['session_ended'] == true &&
     activeSession?['can_check_out'] == true;
-  bool get hasOpenSessionForCheckout => activeSessionId != null;
+  bool get hasOpenSessionForCheckout =>
+    activeSessionId != null &&
+    activeSession?['can_check_out'] == true;
   bool get identityVerified => fingerprintPassed || otpVerified;
 
   bool canCheckIn() {
@@ -339,27 +382,34 @@ double? distanceFromClassroom;
 
 
   if (snapshot == null ||
-      !snapshot.gpsValid ||
-      !snapshot.geofenceValid ||
-      snapshot.wifiStatus != 'Trusted' ||
-      !snapshot.bleDetected ||
-      !snapshot.timeWindowValid ||
-      !hasActiveSession) {
-
-    await showSecurityDialog(forCheckout: false);
-    return;
-  }
+    !snapshot.gpsValid ||
+    !snapshot.geofenceValid ||
+    snapshot.wifiStatus != 'Trusted' ||
+    !snapshot.bleDetected ||
+    !snapshot.timeWindowValid ||
+    !hasActiveSession) {
+  await showSecurityDialog(forCheckout: false);
+  return;
+}
 
 
   // SECOND: Open fingerprint only after security passes
 
-  final verified = await Navigator.pushNamed<bool>(
-    context,
-    '/fingerprint-scan',
-    arguments: {
-      'fingerprintAttempts': fingerprintAttempts,
-    },
-  );
+  final verified = await Navigator.push<bool>(
+  context,
+  MaterialPageRoute<bool>(
+    builder: (context) => const FingerprintScanScreen(),
+    settings: RouteSettings(
+      arguments: {
+        'fingerprintAttempts': fingerprintAttempts,
+      },
+    ),
+  ),
+);
+
+print('FINGERPRINT RESULT: $verified');
+
+
 
 
   if (!mounted || verified != true) {
@@ -420,13 +470,18 @@ double? distanceFromClassroom;
       ]);
 
     } else {
+  final data = Map<String, dynamic>.from(
+    result['data'] ?? {},
+  );
 
-      throw Exception(
-        result['data']['error'] ??
-        'Check-in failed',
-      );
+  final message =
+      data['error'] ??
+      data['detail'] ??
+      data['message'] ??
+      'Check-in failed';
 
-    }
+  _snack(message);
+}
 
 
   } catch(error){
@@ -593,7 +648,7 @@ double? distanceFromClassroom;
         canCheckIn: canCheckIn(),
         canCheckOut: canCheckOut(),
       ),
-      const NotificationsTab(),
+      const NotificationScreen(),
       ProfileTab(user: user, onRefresh: loadUser),
     ];
 
@@ -835,12 +890,6 @@ class AttendanceTab extends StatelessWidget {
   }
 }
 
-class NotificationsTab extends StatelessWidget {
-  const NotificationsTab({super.key});
-  @override
-  Widget build(BuildContext context) =>
-      const Center(child: Text('No notifications'));
-}
 
 class ProfileTab extends StatelessWidget {
   const ProfileTab({super.key, required this.user, required this.onRefresh});
@@ -1003,7 +1052,8 @@ class _GeoAttendStatusCard extends StatelessWidget {
 
    final valid =
     hasActiveSession &&
-    snapshot?.gpsValid == true;
+    snapshot?.gpsValid == true &&
+    snapshot?.geofenceValid == true;
     return _GlassCard(
       title: 'Geo Attend Status',
       icon: Icons.location_on_outlined,
@@ -1013,20 +1063,16 @@ class _GeoAttendStatusCard extends StatelessWidget {
           : Column(
               children: [
                 _MetricRow(
-                    label: 'Distance from classroom',
-                    value:
-
-                      !hasActiveSession
-                      ? '-'
-                    :
-                      distanceFromClassroom != null
-                      ? '${distanceFromClassroom!.toStringAsFixed(1)} m'
-                      : '-',
+                    label: 'Distance',
+                    value: snapshot != null
+                          ? '${snapshot!.distanceMeters.toStringAsFixed(1)} m'
+                          : '-',
                 ),
                 _MetricRow(
                   label: 'Radius',
-                  value:
-                      '${snapshot?.radiusMeters.toStringAsFixed(0) ?? '-'} m',
+                  value: snapshot != null
+                    ? '${snapshot!.radiusMeters.toStringAsFixed(0)} m'
+                    : '-',
                 ),
                 _MetricRow(
                   label: 'Geofence status',

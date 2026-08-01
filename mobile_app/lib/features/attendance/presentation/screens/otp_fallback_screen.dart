@@ -57,13 +57,10 @@ class _OtpFallbackScreenState extends State<OtpFallbackScreen> {
 
       if (!mounted) return;
       if (success) {
-        Navigator.pushReplacementNamed(
-          context,
-          '/home',
-          arguments: {'otpVerified': true, 'fingerprintAttempts': 3},
-        );
+        Navigator.pop(context, true);
       } else {
-        _snack('Invalid or expired OTP');
+          _snack('Invalid or expired OTP');
+
       }
     } catch (error) {
       if (mounted) _snack('OTP error: $error');
