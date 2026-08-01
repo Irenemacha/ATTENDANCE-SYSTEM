@@ -1,10 +1,9 @@
-from datetime import datetime, timedelta
+from datetime import  timedelta
 
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from geopy.distance import geodesic
 from students.models import Student, Notification
 
 
@@ -12,7 +11,6 @@ from students.serializers import NotificationSerializer
 
 from accounts.models import UserSessionState
 from accounts.permissions import IsLecturer, IsStudent
-from accounts.services import advance_user_state
 
 from courses.models import (
     Subject,
@@ -22,7 +20,6 @@ from courses.models import (
     Classroom
 )
 
-from students.models import Student
 
 from .models import AttendanceSession, Attendance, MovementLog
 from .utils import calculate_distance
@@ -96,10 +93,6 @@ def start_session(request):
         "override_reason"
     )
     
-
-    latitude = request.data.get("latitude")
-    longitude = request.data.get("longitude")
-    radius = request.data.get("radius")
     
     # ==============================
 # CHECK TIMETABLE
@@ -343,31 +336,6 @@ def check_in(request):
     )
 
 
-    expected_beacon = session.classroom.beacon
-
-
-    if beacon_id != expected_beacon.beacon_id:
-
-        return Response(
-        {
-            "error":"Wrong classroom beacon detected",
-            "expected": expected_beacon.beacon_id,
-            "detected": beacon_id
-        },
-        status=400
-    )
-
-
-
-    if not session:
-
-        return Response(
-            {
-                "error": "Active session not found"
-            },
-            status=404
-        )
-
 
 
     state, _ = UserSessionState.objects.get_or_create(
@@ -406,19 +374,31 @@ def check_in(request):
         return Response({"error": "Unauthorized WiFi network"}, status=403)
 
     # BLE classroom validation
+    if not session.classroom:
+        return Response(
+        {
+            "error": "No classroom configured for this session"
+        },
+        status=403
+    )
 
-    if session.classroom:
+    expected_beacon = getattr(session.classroom, "beacon", None)
 
-       expected_beacon = session.classroom.beacon
+    if not expected_beacon:
+        return Response(
+        {
+            "error": "No BLE beacon assigned to this classroom"
+        },
+        status=403
+    )
 
     if beacon_id != expected_beacon.beacon_id:
-
         return Response(
-            {
-                "error": "Wrong classroom BLE beacon detected"
-            },
-            status=403
-        )
+        {
+            "error": "Wrong classroom BLE beacon detected"
+        },
+        status=403
+    )
 
         # fingerprint verification
 
@@ -786,38 +766,7 @@ def end_session(request):
 
     session.save()
     
-    open_records = Attendance.objects.filter(
-        session=session,
-        check_out_time__isnull=True
-    )
-    total = (
-        session.end_time -
-        session.start_time
-    ).total_seconds()
-
-    for attendance in open_records:
-        attendance.check_out_time = session.end_time
-
-        duration = (
-            attendance.check_out_time -
-            attendance.check_in_time
-        ).total_seconds()
-
-        if total > 0:
-            attendance.attendance_percentage = min(
-                (duration / total) * 100,
-                100
-            )
-        else:
-            attendance.attendance_percentage = 0
-
-        attendance.status = (
-            "PARTIAL_ATTENDANCE"
-            if attendance.attendance_percentage < 80
-            else "PRESENT"
-        )
-
-        attendance.save()
+    
 
     students = Student.objects.filter(
         course=session.course
@@ -1018,20 +967,26 @@ def attendance_report(request):
 @permission_classes([IsLecturer])
 def session_report(request, session_id):
 
+
+    if not session_id:
+        return Response(
+        {
+            "error": "session_id is required"
+        },
+        status=400
+        )
+
     session = AttendanceSession.objects.filter(
-        id=session_id,
-        lecturer=request.user
-    ).first()
-
-
+    id=session_id,
+    lecturer=request.user
+).first()
 
     if not session:
-
         return Response(
-            {
-                "error": "Session not found"
-            },
-            status=404
+        {
+            "error": "Session not found"
+        },
+        status=404
         )
 
 
@@ -1116,23 +1071,41 @@ def active_session(request):
     if attendance:
         session = attendance.session
 
-        return Response({
-            "session_exists": True,
-            "session_id": session.id,
-            "session_active": session.is_active,
-            "session_ended": not session.is_active,
-            "course": session.course.name,
-            "subject": session.subject.name,
-            "attendance_state": "CHECKED_IN",
-            "checked_in": True,
-            "checked_out": False,
-            "can_check_in": False,
-            "can_check_out": (
-            not session.is_active and
-            timezone.now() <= session.checkout_deadline
-        )
-        })
+        now = timezone.now()
 
+        can_check_out = (
+        not session.is_active
+        and session.checkout_deadline is not None
+        and now <= session.checkout_deadline
+        )
+
+        return Response({
+        "session_exists": True,
+        "session_id": session.id,
+
+        "session_active": session.is_active,
+        "session_ended": not session.is_active,
+
+        "course": session.course.name,
+        "subject": session.subject.name,
+
+        "latitude": session.latitude,
+        "longitude": session.longitude,
+        "radius_meters": session.radius_meters,
+
+        "checkout_deadline": session.checkout_deadline,
+
+        "attendance_state": "CHECKED_IN",
+
+        "checked_in": True,
+        "checked_out": False,
+
+        "can_check_in": False,
+        "can_check_out": can_check_out,
+
+        "auto_closed": session.auto_closed,
+        })
+        
     # Student already checked out
     completed = Attendance.objects.filter(
         student=student,
@@ -1157,7 +1130,7 @@ def active_session(request):
             "course": session.course.name,
             "subject": session.subject.name,
             "attendance_state": "CHECKED_OUT",
-            "checked_in": True,
+            "checked_in": False,
             "checked_out": True,
             "can_check_in": False,
             "can_check_out": False,
@@ -1166,74 +1139,7 @@ def active_session(request):
         })
         
         
-    # Recently ended session waiting for checkout
-
-    ended_session = AttendanceSession.objects.filter(
-    course=student.course,
-    is_active=False,
-    checkout_deadline__gte=timezone.now()
-    ).order_by("-end_time").first()
-
-
-    if ended_session:
-
-        return Response({
-        "session_exists": True,
-        "session_id": ended_session.id,
-        "session_active": False,
-        "session_ended": True,
-        "course": ended_session.course.name,
-        "subject": ended_session.subject.name,
-        "attendance_state": "SESSION_ENDED",
-        "can_check_in": False,
-        "can_check_out": True
-    })
         
-    # Ended session waiting for checkout
-
-    pending_checkout = Attendance.objects.filter(
-    student=student,
-    check_in_time__isnull=False,
-    check_out_time__isnull=True,
-    session__is_active=False
-).select_related(
-    "session"
-).order_by(
-    "-session__end_time"
-).first()
-
-
-    if pending_checkout:
-
-        session = pending_checkout.session
-
-        return Response({
-
-        "session_exists": True,
-
-        "session_id": session.id,
-
-        "session_active": False,
-
-        "session_ended": True,
-
-        "course": session.course.name,
-
-        "subject": session.subject.name,
-
-        "attendance_state": "SESSION_ENDED",
-
-        "checked_in": True,
-
-        "checked_out": False,
-
-        "can_check_in": False,
-
-        "can_check_out": (
-            timezone.now() <= session.checkout_deadline
-        )
-
-    })
 
     # Active lecturer session available
     session = AttendanceSession.objects.filter(
@@ -1296,7 +1202,8 @@ def auto_close_expired_sessions():
 
             session_end = (
                 session.start_time +
-                timedelta(hours=2)
+                timedelta(minutes=session.override_duration_minutes)
+
             )
 
 
@@ -1367,6 +1274,61 @@ def auto_close_expired_sessions():
                     )
                 )
                 
+    # ==========================================
+    # AUTO-CLOSE STUDENTS WHO NEVER CHECKED OUT
+    # ==========================================
+
+    expired_sessions = AttendanceSession.objects.filter(
+        is_active=False,
+        checkout_deadline__lt=now
+    )
+
+    for session in expired_sessions:
+
+        open_attendance = Attendance.objects.filter(
+            session=session,
+            check_in_time__isnull=False,
+            check_out_time__isnull=True
+        )
+
+        for attendance in open_attendance:
+
+            attendance.check_out_time = session.checkout_deadline
+
+            # Calculate how long the student attended
+            if attendance.check_in_time and session.start_time:
+
+                session_duration = (
+                    session.end_time - session.start_time
+                ).total_seconds()
+
+                attended_duration = (
+                    attendance.check_out_time -
+                    attendance.check_in_time
+                ).total_seconds()
+
+                if session_duration > 0:
+
+                    attendance.attendance_percentage = min(
+                        (attended_duration / session_duration) * 100,
+                        100
+                    )
+
+                else:
+
+                    attendance.attendance_percentage = 0
+
+            else:
+
+                attendance.attendance_percentage = 0
+
+            attendance.status = calculate_attendance_status(
+                attendance
+            )
+
+            attendance.save()
+            
+            
 # ======================================================
 # ATTENDANCE STATUS CALCULATION
 # ======================================================
@@ -1495,4 +1457,3 @@ def notifications(request):
     )
 
     return Response(serializer.data)
-
