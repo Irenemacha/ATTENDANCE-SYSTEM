@@ -225,6 +225,19 @@ def start_session(request):
                 },
                 status=403
             )
+            
+    now = timezone.localtime()
+
+    if is_override:
+        session_end_time = now + timedelta(minutes=120)
+    else:
+        session_end_time = timezone.make_aware(
+        datetime.combine(
+            now.date(),
+            timetable.end_time
+        ),
+        timezone.get_current_timezone()
+    )
      
     session = AttendanceSession.objects.create(
 
@@ -246,13 +259,14 @@ def start_session(request):
 
     allowed_wifi_bssid=allowed_wifi,
 
-    start_time=timezone.now(),
+    end_time=session_end_time,
 
     is_active=True,
 
     is_override=is_override,
 
     override_reason=override_reason,
+
     override_duration_minutes=120
 )
     
@@ -1189,8 +1203,9 @@ def active_session(request):
         "session_id": session.id,
         "session_active": True,
         "session_ended": False,
-        "start_time": session.start_time.isoformat() if session.start_time else None,
-        "end_time": session.end_time.isoformat() if session.end_time else None,
+        "start_time": session.start_time.isoformat(),
+        "end_time": session.end_time.isoformat()
+           if session.end_time else None,
 
         "auto_closed": session.auto_closed,
         "checkout_deadline": session.checkout_deadline,
