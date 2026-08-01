@@ -1,4 +1,4 @@
-from datetime import  timedelta
+from datetime import datetime, timedelta
 
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
@@ -1085,6 +1085,9 @@ def active_session(request):
 
         "session_active": session.is_active,
         "session_ended": not session.is_active,
+        
+        "start_time": session.start_time.isoformat() if session.start_time else None,
+        "end_time": session.end_time.isoformat() if session.end_time else None,
 
         "course": session.course.name,
         "subject": session.subject.name,
@@ -1125,6 +1128,8 @@ def active_session(request):
             "session_id": session.id,
             "session_active": False,
             "session_ended": True,
+            "start_time": session.start_time.isoformat() if session.start_time else None,
+            "end_time": session.end_time.isoformat() if session.end_time else None,
             "checkout_deadline": session.checkout_deadline,
             "percentage": completed.attendance_percentage,
             "course": session.course.name,
@@ -1155,6 +1160,28 @@ def active_session(request):
     if session:
 
         distance = None
+        
+        now = timezone.localtime()
+
+        window_start = None
+        window_end = None
+
+        if session.timetable:
+            timetable = session.timetable
+
+            window_start = timezone.make_aware(
+                datetime.combine(
+                    now.date(),
+                    timetable.start_time
+                )
+            )
+
+            window_end = timezone.make_aware(
+                datetime.combine(
+                    now.date(),
+                    timetable.end_time
+                )
+            )
 
         return Response({
         "session_exists": True,
@@ -1162,6 +1189,9 @@ def active_session(request):
         "session_id": session.id,
         "session_active": True,
         "session_ended": False,
+        "start_time": session.start_time.isoformat() if session.start_time else None,
+        "end_time": session.end_time.isoformat() if session.end_time else None,
+
         "auto_closed": session.auto_closed,
         "checkout_deadline": session.checkout_deadline,
         "course": session.course.name,

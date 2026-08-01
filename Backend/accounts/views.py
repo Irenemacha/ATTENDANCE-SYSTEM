@@ -291,8 +291,6 @@ def verify_otp(request):
             defaults={"is_verified": True},
         )
 
-    advance_user_state(user, "otp_success")
-
     refresh = RefreshToken.for_user(user)
 
     return Response({
