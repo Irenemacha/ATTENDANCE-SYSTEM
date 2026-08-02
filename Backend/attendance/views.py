@@ -1514,61 +1514,52 @@ def location_update(request):
         user=request.user
     )
 
-    session = AttendanceSession.objects.filter(
-        is_active=True
-    ).first()
-
-
-    if not session:
-        return Response(
-            {
-                "message": "No active session"
-            },
-            status=400
+    attendance = (
+        Attendance.objects
+        .filter(
+            student=student,
+            check_in_time__isnull=False,
+            check_out_time__isnull=True,
         )
-    attendance = Attendance.objects.filter(
-      student=student,
-      session=session,
-      check_in_time__isnull=False
-    ).first()
-
+        .select_related("session")
+        .order_by("-check_in_time")
+        .first()
+    )
 
     if not attendance:
         return Response(
-        {
-            "message": "Fingerprint verification required"
-        },
-        status=403
-        ) 
-        
+            {
+                "message": "No open attendance record"
+            },
+            status=400
+        )
+
+    session = attendance.session
+
     distance = calculate_distance(
-    request.data.get("latitude"),
-    request.data.get("longitude"),
-    session.latitude,
-    session.longitude
-)
+        request.data.get("latitude"),
+        request.data.get("longitude"),
+        session.latitude,
+        session.longitude
+    )
 
-    inside_geofence = distance <= session.radius_meters 
-
+    inside_geofence = distance <= session.radius_meters
 
     MovementLog.objects.create(
-    student=student,
-    session=session,
-    latitude=request.data.get("latitude"),
-    longitude=request.data.get("longitude"),
-    inside_geofence=inside_geofence,
-    wifi_valid=request.data.get("wifi_valid", False),
-    beacon_valid=request.data.get("beacon_valid", False)
+        student=student,
+        session=session,
+        latitude=request.data.get("latitude"),
+        longitude=request.data.get("longitude"),
+        inside_geofence=inside_geofence,
+        wifi_valid=request.data.get("wifi_valid", False),
+        beacon_valid=request.data.get("beacon_valid", False)
     )
 
-
-    return Response(
-        {
-            "message":"Movement recorded",
-            "distance": round(distance, 2),
-            "inside_geofence": inside_geofence
-        }
-    )
+    return Response({
+        "message": "Movement recorded",
+        "inside_geofence": inside_geofence,
+        "distance_meters": distance,
+    })
     
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
