@@ -669,60 +669,56 @@ def check_out(request):
 
     checkout_time = timezone.now()
 
-
     attendance.check_out_time = checkout_time
 
-
-
-    # Calculate attendance percentage
-
-    if session.start_time and session.end_time:
-
+    if attendance.check_in_time and session.start_time and session.end_time:
         session_duration = (
-
-            session.end_time -
-
-            session.start_time
-
+            session.end_time - session.start_time
         ).total_seconds()
-
-
 
         attended_duration = (
-
-            checkout_time -
-
-            attendance.check_in_time
-
+            checkout_time - attendance.check_in_time
         ).total_seconds()
 
-
-
         if session_duration > 0:
-
-            attendance.attendance_percentage = min(
-            (attended_duration / session_duration) * 100,
-            100
+            percentage = min(
+                (attended_duration / session_duration) * 100,
+                100
             )
-            
-        if attendance.attendance_percentage < 80:
-           attendance.status = "PARTIAL_ATTENDANCE"
         else:
-            attendance.status = calculate_attendance_status(attendance)
+            percentage = 0
 
+        attendance.attendance_percentage = round(
+            percentage,
+            2
+        )
+    else:
+        attendance.attendance_percentage = 0
 
+    if attendance.attendance_percentage < 80:
+        attendance.status = "PARTIAL_ATTENDANCE"
+    else:
+        attendance.status = calculate_attendance_status(attendance)
 
-    attendance.save()
-    
+    attendance.save(
+    update_fields=[
+        "check_out_time",
+        "attendance_percentage",
+        "status",
+    ]
+)
+
     percentage = attendance.attendance_percentage or 0
 
-    Notification.objects.create(
-    student=student,
-    title="Checkout successful",
-    message=f"Attendance completed with {percentage:.0f}% attendance."
+    # Notification must not prevent checkout from succeeding.
+    try:
+        Notification.objects.create(
+        student=student,
+        title="Checkout successful",
+        message=f"Attendance completed with {percentage:.0f}% attendance."
     )
-
-
+    except Exception as notification_error:
+       print("CHECKOUT NOTIFICATION ERROR:", notification_error)
 
     state.current_state = "IDLE"
     state.save()
