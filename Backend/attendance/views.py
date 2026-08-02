@@ -1071,7 +1071,7 @@ def active_session(request):
     now = timezone.localtime()
 
     # =========================================================
-    # 1. STUDENT CURRENTLY CHECKED IN
+    # 1. STUDENT HAS CHECKED IN BUT NOT CHECKED OUT
     # =========================================================
 
     attendance = (
@@ -1079,13 +1079,14 @@ def active_session(request):
             student=student,
             check_in_time__isnull=False,
             check_out_time__isnull=True,
-            status__in=[
-                "PRESENT",
-                "LATE",
-                "PARTIAL_ATTENDANCE",
-            ],
         )
-        .select_related("session", "session__course", "session__subject")
+        .select_related(
+            "session",
+            "session__course",
+            "session__subject",
+            "session__classroom",
+        )
+        .order_by("-check_in_time")
         .first()
     )
 
@@ -1093,16 +1094,11 @@ def active_session(request):
 
         session = attendance.session
 
-        can_check_out = (
-            not session.is_active
-            and session.checkout_deadline is not None
-            and now <= session.checkout_deadline
-        )
-
-        # Checkout deadline expired
+        # If checkout deadline has expired, this attendance
+        # is no longer an open checkout session.
         if (
             not session.is_active
-            and session.checkout_deadline is not None
+            and session.checkout_deadline
             and now > session.checkout_deadline
         ):
             return Response({
@@ -1110,8 +1106,16 @@ def active_session(request):
                 "attendance_state": "NOT_CHECKED_IN",
                 "checked_in": False,
                 "checked_out": False,
-                "message": "No attendance session available",
+                "can_check_in": False,
+                "can_check_out": False,
+                "message": "Checkout period has expired.",
             })
+
+        can_check_out = (
+            not session.is_active
+            and session.checkout_deadline is not None
+            and now <= session.checkout_deadline
+        )
 
         return Response({
             "session_exists": True,
@@ -1130,17 +1134,17 @@ def active_session(request):
                 if session.end_time else None
             ),
 
+            "checkout_deadline": (
+                session.checkout_deadline.isoformat()
+                if session.checkout_deadline else None
+            ),
+
             "course": session.course.name,
             "subject": session.subject.name,
 
             "latitude": session.latitude,
             "longitude": session.longitude,
             "radius_meters": session.radius_meters,
-
-            "checkout_deadline": (
-                session.checkout_deadline.isoformat()
-                if session.checkout_deadline else None
-            ),
 
             "attendance_state": "CHECKED_IN",
 
@@ -1151,8 +1155,15 @@ def active_session(request):
             "can_check_out": can_check_out,
 
             "auto_closed": session.auto_closed,
-        })
 
+            "beacon_id": (
+                session.classroom.beacon.beacon_id
+                if session.classroom
+                and hasattr(session.classroom, "beacon")
+                and session.classroom.beacon
+                else None
+            ),
+        })
 
     # =========================================================
     # 2. STUDENT ALREADY CHECKED OUT
@@ -1164,7 +1175,12 @@ def active_session(request):
             check_in_time__isnull=False,
             check_out_time__isnull=False,
         )
-        .select_related("session", "session__course", "session__subject")
+        .select_related(
+            "session",
+            "session__course",
+            "session__subject",
+            "session__classroom",
+        )
         .order_by("-check_out_time")
         .first()
     )
@@ -1213,8 +1229,15 @@ def active_session(request):
             "can_check_out": False,
 
             "auto_closed": session.auto_closed,
-        })
 
+            "beacon_id": (
+                session.classroom.beacon.beacon_id
+                if session.classroom
+                and hasattr(session.classroom, "beacon")
+                and session.classroom.beacon
+                else None
+            ),
+        })
 
     # =========================================================
     # 3. FIND ACTIVE LECTURER SESSION
@@ -1238,9 +1261,6 @@ def active_session(request):
 
         return Response({
             "session_exists": True,
-
-            "distance": None,
-
             "session_id": session.id,
 
             "session_active": True,
@@ -1255,8 +1275,6 @@ def active_session(request):
                 session.end_time.isoformat()
                 if session.end_time else None
             ),
-
-            "auto_closed": session.auto_closed,
 
             "checkout_deadline": (
                 session.checkout_deadline.isoformat()
@@ -1278,33 +1296,30 @@ def active_session(request):
             "can_check_in": True,
             "can_check_out": False,
 
+            "auto_closed": session.auto_closed,
+
             "beacon_id": (
                 session.classroom.beacon.beacon_id
                 if session.classroom
                 and hasattr(session.classroom, "beacon")
+                and session.classroom.beacon
                 else None
             ),
         })
 
-
     # =========================================================
-    # 4. NO ACTIVE SESSION
+    # 4. NO SESSION
     # =========================================================
 
     return Response({
         "session_exists": False,
-
         "attendance_state": "NOT_CHECKED_IN",
-
         "checked_in": False,
         "checked_out": False,
-
         "can_check_in": False,
         "can_check_out": False,
-
         "message": "No attendance session available",
     })
-
 
 
 
