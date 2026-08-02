@@ -1092,7 +1092,7 @@ def active_session(request):
         and session.checkout_deadline is not None
         and now <= session.checkout_deadline
         )
-
+    
         return Response({
         "session_exists": True,
         "session_id": session.id,
@@ -1122,6 +1122,20 @@ def active_session(request):
 
         "auto_closed": session.auto_closed,
         })
+    # Session has ended and checkout window has expired.
+# Treat it as no longer available to the student.
+    if (
+    not session.is_active
+    and session.checkout_deadline is not None
+    and now > session.checkout_deadline
+):
+        return Response({
+        "session_exists": False,
+        "attendance_state": "NOT_CHECKED_IN",
+        "checked_in": False,
+        "checked_out": False,
+        "message": "No attendance session available"
+    })
         
     # Student already checked out
     completed = Attendance.objects.filter(
