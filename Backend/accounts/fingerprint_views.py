@@ -4,6 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 
 from accounts.models import UserSessionState
 from accounts.models import OTP
+from accounts.views import advance_user_state
 
 
 
@@ -27,11 +28,15 @@ def fingerprint_verify(request):
     success = request.data.get("success", False)
 
     if success:
-        state.fingerprint_verified = True
-        state.current_state = "FINGERPRINT_OK"
-        state.save()
+        state = advance_user_state(
+        request.user,
+        "fingerprint_success"
+    )
 
-        return Response({"message": "Fingerprint verified"})
+        return Response({
+        "message": "Fingerprint verified",
+        "state": state.current_state
+    })
 
         
 

@@ -309,7 +309,10 @@ def verify_device_otp(request):
     if not user:
         return Response({"error": "User not found"}, status=400)
 
-    otp_obj = OTP.objects.filter(user=user).order_by("-id").first()
+    otp_obj = OTP.objects.filter(
+    user=user,
+    is_used=False
+    ).order_by("-id").first()
     if not otp_obj:
         return Response({"error": "No OTP found"}, status=400)
     if str(otp_obj.code) != str(otp_input):
