@@ -1071,7 +1071,7 @@ def active_session(request):
     now = timezone.localtime()
 
     # =========================================================
-    # 1. STUDENT HAS CHECKED IN BUT NOT CHECKED OUT
+    # 1. FIND STUDENT'S OPEN ATTENDANCE
     # =========================================================
 
     attendance = (
@@ -1094,76 +1094,140 @@ def active_session(request):
 
         session = attendance.session
 
-        # If checkout deadline has expired, this attendance
-        # is no longer an open checkout session.
+        # =====================================================
+        # OLD SESSION: CHECKOUT DEADLINE STILL VALID
+        # =====================================================
+
+        if (
+            not session.is_active
+            and session.checkout_deadline
+            and now <= session.checkout_deadline
+        ):
+
+            return Response({
+                "session_exists": True,
+                "session_id": session.id,
+
+                "session_active": False,
+                "session_ended": True,
+
+                "start_time": (
+                    session.start_time.isoformat()
+                    if session.start_time else None
+                ),
+
+                "end_time": (
+                    session.end_time.isoformat()
+                    if session.end_time else None
+                ),
+
+                "checkout_deadline": (
+                    session.checkout_deadline.isoformat()
+                    if session.checkout_deadline else None
+                ),
+
+                "course": session.course.name,
+                "subject": session.subject.name,
+
+                "latitude": session.latitude,
+                "longitude": session.longitude,
+                "radius_meters": session.radius_meters,
+
+                "attendance_state": "CHECKED_IN",
+
+                "checked_in": True,
+                "checked_out": False,
+
+                "can_check_in": False,
+                "can_check_out": True,
+
+                "auto_closed": session.auto_closed,
+
+                "beacon_id": (
+                    session.classroom.beacon.beacon_id
+                    if session.classroom
+                    and hasattr(session.classroom, "beacon")
+                    and session.classroom.beacon
+                    else None
+                ),
+            })
+
+        # =====================================================
+        # OLD SESSION: CHECKOUT DEADLINE EXPIRED
+        #
+        # IMPORTANT:
+        # DO NOT RETURN HERE.
+        #
+        # We continue below so a NEW active session can be found.
+        # =====================================================
+
         if (
             not session.is_active
             and session.checkout_deadline
             and now > session.checkout_deadline
         ):
+
+            # The old attendance is no longer an active
+            # checkout opportunity.
+            #
+            # We deliberately do NOT return "session_exists=false"
+            # because another newer attendance session may exist.
+
+            pass
+
+        # =====================================================
+        # CURRENT SESSION STILL ACTIVE
+        # =====================================================
+
+        elif session.is_active:
+
             return Response({
-                "session_exists": False,
-                "attendance_state": "NOT_CHECKED_IN",
-                "checked_in": False,
+                "session_exists": True,
+                "session_id": session.id,
+
+                "session_active": True,
+                "session_ended": False,
+
+                "start_time": (
+                    session.start_time.isoformat()
+                    if session.start_time else None
+                ),
+
+                "end_time": (
+                    session.end_time.isoformat()
+                    if session.end_time else None
+                ),
+
+                "checkout_deadline": (
+                    session.checkout_deadline.isoformat()
+                    if session.checkout_deadline else None
+                ),
+
+                "course": session.course.name,
+                "subject": session.subject.name,
+
+                "latitude": session.latitude,
+                "longitude": session.longitude,
+                "radius_meters": session.radius_meters,
+
+                "attendance_state": "CHECKED_IN",
+
+                "checked_in": True,
                 "checked_out": False,
+
                 "can_check_in": False,
                 "can_check_out": False,
-                "message": "Checkout period has expired.",
+
+                "auto_closed": session.auto_closed,
+
+                "beacon_id": (
+                    session.classroom.beacon.beacon_id
+                    if session.classroom
+                    and hasattr(session.classroom, "beacon")
+                    and session.classroom.beacon
+                    else None
+                ),
             })
-
-        can_check_out = (
-            not session.is_active
-            and session.checkout_deadline is not None
-            and now <= session.checkout_deadline
-        )
-
-        return Response({
-            "session_exists": True,
-            "session_id": session.id,
-
-            "session_active": session.is_active,
-            "session_ended": not session.is_active,
-
-            "start_time": (
-                session.start_time.isoformat()
-                if session.start_time else None
-            ),
-
-            "end_time": (
-                session.end_time.isoformat()
-                if session.end_time else None
-            ),
-
-            "checkout_deadline": (
-                session.checkout_deadline.isoformat()
-                if session.checkout_deadline else None
-            ),
-
-            "course": session.course.name,
-            "subject": session.subject.name,
-
-            "latitude": session.latitude,
-            "longitude": session.longitude,
-            "radius_meters": session.radius_meters,
-
-            "attendance_state": "CHECKED_IN",
-
-            "checked_in": True,
-            "checked_out": False,
-
-            "can_check_in": False,
-            "can_check_out": can_check_out,
-
-            "auto_closed": session.auto_closed,
-
-            "beacon_id": (
-                session.classroom.beacon.beacon_id
-                if session.classroom
-                and hasattr(session.classroom, "beacon")
-                and session.classroom.beacon
-                else None
-            ),
-        })
 
     # =========================================================
     # 2. STUDENT ALREADY CHECKED OUT
@@ -1185,62 +1249,14 @@ def active_session(request):
         .first()
     )
 
-    if completed:
-
-        session = completed.session
-
-        return Response({
-            "session_exists": True,
-            "session_id": session.id,
-
-            "session_active": False,
-            "session_ended": True,
-
-            "start_time": (
-                session.start_time.isoformat()
-                if session.start_time else None
-            ),
-
-            "end_time": (
-                session.end_time.isoformat()
-                if session.end_time else None
-            ),
-
-            "checkout_deadline": (
-                session.checkout_deadline.isoformat()
-                if session.checkout_deadline else None
-            ),
-
-            "percentage": completed.attendance_percentage,
-
-            "course": session.course.name,
-            "subject": session.subject.name,
-
-            "latitude": session.latitude,
-            "longitude": session.longitude,
-            "radius_meters": session.radius_meters,
-
-            "attendance_state": "CHECKED_OUT",
-
-            "checked_in": False,
-            "checked_out": True,
-
-            "can_check_in": False,
-            "can_check_out": False,
-
-            "auto_closed": session.auto_closed,
-
-            "beacon_id": (
-                session.classroom.beacon.beacon_id
-                if session.classroom
-                and hasattr(session.classroom, "beacon")
-                and session.classroom.beacon
-                else None
-            ),
-        })
+    # IMPORTANT:
+    # Only return CHECKED_OUT if there isn't a newer active
+    # session that the student needs to attend.
+    #
+    # Therefore we don't return immediately here.
 
     # =========================================================
-    # 3. FIND ACTIVE LECTURER SESSION
+    # 3. FIND CURRENT ACTIVE LECTURER SESSION
     # =========================================================
 
     session = (
@@ -1308,8 +1324,62 @@ def active_session(request):
         })
 
     # =========================================================
-    # 4. NO SESSION
+    # 4. NO ACTIVE SESSION
     # =========================================================
+
+    if completed:
+
+        session = completed.session
+
+        return Response({
+            "session_exists": True,
+            "session_id": session.id,
+
+            "session_active": False,
+            "session_ended": True,
+
+            "start_time": (
+                session.start_time.isoformat()
+                if session.start_time else None
+            ),
+
+            "end_time": (
+                session.end_time.isoformat()
+                if session.end_time else None
+            ),
+
+            "checkout_deadline": (
+                session.checkout_deadline.isoformat()
+                if session.checkout_deadline else None
+            ),
+
+            "percentage": completed.attendance_percentage,
+
+            "course": session.course.name,
+            "subject": session.subject.name,
+
+            "latitude": session.latitude,
+            "longitude": session.longitude,
+            "radius_meters": session.radius_meters,
+
+            "attendance_state": "CHECKED_OUT",
+
+            "checked_in": False,
+            "checked_out": True,
+
+            "can_check_in": False,
+            "can_check_out": False,
+
+            "auto_closed": session.auto_closed,
+
+            "beacon_id": (
+                session.classroom.beacon.beacon_id
+                if session.classroom
+                and hasattr(session.classroom, "beacon")
+                and session.classroom.beacon
+                else None
+            ),
+        })
 
     return Response({
         "session_exists": False,
