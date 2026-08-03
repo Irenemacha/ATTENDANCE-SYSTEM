@@ -17,26 +17,40 @@ def student_dashboard(request):
     try:
         # ✅ correct direction: User → Student
         student = Student.objects.get(user=user)
-
         total_sessions = Attendance.objects.filter(
         student=student
         ).count()
-        
-        print("DEBUG TOTAL SESSIONS:", total_sessions)
 
-        # A session counts as attended only after its matching check-in and
-        # check-out have both been recorded. This keeps the percentage based
-        # on total sessions versus completed attendance sessions.
-        attendance_records = Attendance.objects.filter(student=student)
+        attendance_records = Attendance.objects.filter(
+        student=student
+        )
 
-        # Count attended sessions: statuses that count as attendance
+# Calculate overall attendance using the actual
+# attendance percentage recorded for each session.
+        total_percentage = sum(
+        float(record.attendance_percentage or 0)
+        for record in attendance_records
+        )
+
+        percentage = (
+        total_percentage / total_sessions
+        if total_sessions > 0
+        else 0
+       )
+
+        percentage = round(percentage, 2)
+
         attended_sessions = attendance_records.filter(
-            status__in=["PRESENT", "LATE", "PARTIAL_ATTENDANCE"]
-        ).count()
+        status__in=[
+            "PRESENT",
+            "LATE",
+            "PARTIAL_ATTENDANCE"
+            ]
+            ).count()
 
-        total_absent = attendance_records.filter(status="ABSENT").count()
-
-        percentage = round((attended_sessions / total_sessions) * 100, 2) if total_sessions > 0 else 0
+        total_absent = attendance_records.filter(
+            status="ABSENT"
+            ).count()
         status = "Fine" if percentage >= 75 else "Critical"
 
         return Response({
