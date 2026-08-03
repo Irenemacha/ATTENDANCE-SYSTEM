@@ -12,6 +12,7 @@ void main() {
         sessionActive: true,
         sessionStartTime: sessionStart,
         sessionEndTime: sessionEnd,
+        canCheckOut: false,
       );
 
       expect(valid, isTrue);
@@ -22,6 +23,7 @@ void main() {
         sessionActive: false,
         sessionStartTime: sessionStart,
         sessionEndTime: sessionEnd,
+        canCheckOut: false,
       );
 
       expect(valid, isFalse);
@@ -59,6 +61,7 @@ void main() {
         sessionActive: true,
         sessionStartTime: sessionStart,
         sessionEndTime: sessionEnd,
+        canCheckOut: false,
       );
 
       expect(valid, isTrue);
@@ -69,6 +72,7 @@ void main() {
         sessionActive: false,
         sessionStartTime: sessionStart,
         sessionEndTime: sessionEnd,
+        canCheckOut: false,
       );
 
       expect(valid, isFalse);

@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:location/location.dart';
 import 'package:mobile_app/core/storage/storage_service.dart';
 import 'package:mobile_app/features/attendance/data/attendance_service.dart';
 import 'package:mobile_app/features/attendance/data/security_validation_service.dart';
@@ -28,6 +27,7 @@ class _MainShellScreenState extends State<MainShellScreen>
   int currentIndex = 0;
   bool isLoading = true;
   bool isSecurityLoading = false;
+  bool _securityEvaluationRunning = false;
   bool fingerprintPassed = false;
   bool otpVerified = false;
   bool checkoutIdentityVerified = false;
@@ -41,7 +41,6 @@ class _MainShellScreenState extends State<MainShellScreen>
   AttendanceFlowState attendanceState = AttendanceFlowState.notCheckedIn;
   AttendanceSecuritySnapshot? securitySnapshot;
 
-  final location = Location();
   final attendanceService = AttendanceService();
   final dashboardService = DashboardService();
 
@@ -158,26 +157,32 @@ class _MainShellScreenState extends State<MainShellScreen>
   Future<void> evaluateSecurity() async {
   if (!mounted) return;
 
-  setState(() => isSecurityLoading = true);
+  // Prevent multiple GPS/security evaluations from running
+  // at the same time.
+  if (_securityEvaluationRunning) {
+    print('SECURITY EVALUATION SKIPPED: already running');
+    return;
+  }
 
-  DateTime? sessionStartTime;
-  DateTime? sessionEndTime;
+  _securityEvaluationRunning = true;
+
+  setState(() => isSecurityLoading = true);
 
   try {
     final rawStart = activeSession?['start_time'];
     final rawEnd = activeSession?['end_time'];
 
-    if (rawStart != null) {
-      sessionStartTime = DateTime.tryParse(rawStart.toString());
-    }
+    final DateTime? sessionStartTime =
+        rawStart != null
+            ? DateTime.tryParse(rawStart.toString())
+            : null;
 
-    if (rawEnd != null) {
-      sessionEndTime = DateTime.tryParse(rawEnd.toString());
-    }
+    final DateTime? sessionEndTime =
+        rawEnd != null
+            ? DateTime.tryParse(rawEnd.toString())
+            : null;
 
     final snapshot = await AttendanceSecurityService.evaluate(
-      location: location,
-
       detectedBeaconId: activeSession?['beacon_id'],
 
       sessionActive: activeSession?['session_active'] == true,
@@ -213,76 +218,150 @@ class _MainShellScreenState extends State<MainShellScreen>
     });
 
     print('SECURITY EVALUATION ERROR: $e');
+  } finally {
+    _securityEvaluationRunning = false;
   }
 }
 
   Future<void> refreshSessionStatus({bool showSnack = true}) async {
-    final result = await attendanceService.getActiveSession();
-    print(result);
-    if (!mounted) return;
+  final result = await attendanceService.getActiveSession();
 
-    if (result['success'] != true) {
-      setState(() {
-        activeSession = null;
-        attendanceState = AttendanceFlowState.notCheckedIn;
-      });
-      if (showSnack) _snack('No active attendance session available');
-      return;
-    }
+  if (!mounted) return;
 
-    final data = Map<String, dynamic>.from(result['data'] ?? {});
-    final hasSession = data['session_id'] != null;
+  if (result['success'] != true) {
     setState(() {
-      activeSession = hasSession ? data : null;
-      if(data['checked_out'] == true){
-        attendanceState = AttendanceFlowState.checkedOut;
-      }
-        else if(data['checked_in'] == true){
-         attendanceState = AttendanceFlowState.checkedIn;
-        }
-      else{
-        attendanceState = AttendanceFlowState.notCheckedIn;
-     }
-      if (attendanceState == AttendanceFlowState.checkedIn &&
-          data['active'] != true &&
-          data['is_active'] != true) {
-        // Checkout is a new high-risk action and needs a fresh identity proof.
-        checkoutIdentityVerified = false;
-      }
+      activeSession = null;
+      attendanceState = AttendanceFlowState.notCheckedIn;
     });
 
-    if (showSnack && !hasSession) {
+    if (showSnack) {
+      _snack('No attendance session available');
+    }
+
+    return;
+  }
+
+  final data = Map<String, dynamic>.from(
+    result['data'] ?? {},
+  );
+
+  final sessionId = data['session_id'];
+
+  final sessionExists = sessionId != null;
+
+  final sessionEnded =
+      data['session_ended'] == true;
+
+  final canCheckout =
+      data['can_check_out'] == true;
+
+  final checkedIn =
+      data['checked_in'] == true;
+
+  final checkedOut =
+      data['checked_out'] == true;
+
+  // ============================================
+  // NO SESSION
+  // ============================================
+
+  if (!sessionExists) {
+    setState(() {
+      activeSession = null;
+      attendanceState = AttendanceFlowState.notCheckedIn;
+    });
+
+    if (showSnack) {
       _snack(
-        data['message']?.toString() ?? 'No active attendance session available',
+        data['message']?.toString() ??
+            'No attendance session available',
       );
     }
+
+    return;
   }
 
+  // ============================================
+  // SESSION EXISTS
+  // Keep it even when lecturer ended it.
+  // ============================================
+
+  setState(() {
+    activeSession = data;
+
+    if (checkedOut) {
+      attendanceState =
+          AttendanceFlowState.checkedOut;
+    } else if (checkedIn) {
+      attendanceState =
+          AttendanceFlowState.checkedIn;
+    } else {
+      attendanceState =
+          AttendanceFlowState.notCheckedIn;
+    }
+
+    // Fresh identity verification is required
+    // for checkout after the session has ended.
+    if (sessionEnded &&
+        canCheckout &&
+        attendanceState ==
+            AttendanceFlowState.checkedIn) {
+      checkoutIdentityVerified = false;
+    }
+  });
+}
   int? get activeSessionId {
-    final raw = activeSession?['session_id'];
-    if (raw is int) return raw;
-    return int.tryParse(raw?.toString() ?? '');
+  final raw = activeSession?['session_id'];
+
+  if (raw is int) {
+    return raw;
   }
 
-  bool get hasActiveSession =>
-    activeSessionId != null &&
-    activeSession?['session_active'] == true;
-  bool get hasEndedCheckoutSession =>
-    activeSessionId != null &&
-    activeSession?['session_ended'] == true &&
-    activeSession?['can_check_out'] == true;
-  bool get hasOpenSessionForCheckout =>
-    activeSessionId != null &&
-    activeSession?['can_check_out'] == true;
-  bool get identityVerified => fingerprintPassed || otpVerified;
-
-  bool canCheckIn() {
- return activeSession?['can_check_in'] == true;
+  return int.tryParse(raw?.toString() ?? '');
 }
 
+  bool get hasActiveSession {
+    return activeSessionId != null &&
+      activeSession?['session_active'] == true;
+}
+
+  bool get hasEndedCheckoutSession {
+    return activeSessionId != null &&
+      activeSession?['session_ended'] == true &&
+      activeSession?['can_check_out'] == true;
+}
+
+  bool get hasOpenSessionForCheckout {
+    return hasActiveSession || hasEndedCheckoutSession;
+}
+
+  bool get identityVerified {
+    return fingerprintPassed || otpVerified;
+}
   bool canCheckOut() {
- return activeSession?['can_check_out'] == true;
+  if (!hasEndedCheckoutSession && !hasActiveSession) {
+    return false;
+  }
+
+  if (attendanceState != AttendanceFlowState.checkedIn) {
+    return false;
+  }
+
+  return activeSession?['can_check_out'] == true;
 }
+
+  // Once checked in, don't allow another check-in.
+  bool canCheckIn() {
+    if (!hasActiveSession) return false;
+
+    if (attendanceState == AttendanceFlowState.checkedIn) {
+      return false;
+    }
+
+    // The actual security checks are performed inside startCheckIn().
+    // The button should therefore be enabled when a session exists.
+    return true;
+  }
 double? distanceFromClassroom;
 
   List<String> missingSecuritySteps({required bool forCheckout}) {
@@ -326,230 +405,297 @@ double? distanceFromClassroom;
   }
 
   Future<void> openFingerprintScan() async {
+  if (!mounted) return;
 
-    if (!mounted) return;
-
-    final verified = await Navigator.pushNamed<bool>(
+  final verified = await Navigator.push<bool>(
     context,
-    '/fingerprint-scan',
-    arguments: {
-      'fingerprintAttempts': fingerprintAttempts,
-    },
+    MaterialPageRoute<bool>(
+      builder: (_) => const FingerprintScanScreen(),
+      settings: RouteSettings(
+        arguments: {
+          'fingerprintAttempts': fingerprintAttempts,
+        },
+      ),
+    ),
   );
 
-    if (!mounted || verified != true) return;
+  if (!mounted) return;
 
-    setState(() {
-    fingerprintPassed = true;
+  print("FINGERPRINT RESULT: $verified");
 
-    if (attendanceState == AttendanceFlowState.checkedIn &&
-        !hasActiveSession) {
-      checkoutIdentityVerified = true;
-    }
-  });
-
-  _snack('Identity Verified Successfully');
-}
-
-  Future<LocationData> _currentLocation() async {
-    var enabled = await location.serviceEnabled();
-    if (!enabled) enabled = await location.requestService();
-    if (!enabled) throw Exception('Location service is disabled');
-
-    var permission = await location.hasPermission();
-    if (permission == PermissionStatus.denied) {
-      permission = await location.requestPermission();
-    }
-    if (permission != PermissionStatus.granted) {
-      throw Exception('Location permission denied');
-    }
-    return location.getLocation();
+  if (verified != true) {
+    return;
   }
 
- Future<void> startCheckIn() async {
-  print("START CHECK IN PRESSED");
+  // Tell backend that fingerprint verification succeeded.
+  final verification =
+      await AttendanceSecurityService().verifyFingerprint(
+    success: true,
+  );
+
+  print("SERVER FINGERPRINT VERIFICATION: $verification");
+
+  if (!mounted) return;
+
+  if (verification['success'] == true) {
+    setState(() {
+      fingerprintPassed = true;
+      otpVerified = false;
+
+      if (attendanceState == AttendanceFlowState.checkedIn &&
+          !hasActiveSession) {
+        checkoutIdentityVerified = true;
+      }
+    });
+
+    _snack('Identity Verified Successfully');
+  } else {
+    _snack('Fingerprint verification failed');
+  }
+}
+
+  Future<void> startCheckIn() async {
+  print("========== START CHECK IN ==========");
 
   await refreshSessionStatus(showSnack: false);
 
   if (!mounted) return;
 
-
-  // FIRST: Check security layers
+  // 1. SECURITY
   await evaluateSecurity();
 
+  if (!mounted) return;
 
   final snapshot = securitySnapshot;
 
-
   if (snapshot == null ||
-    !snapshot.gpsValid ||
-    !snapshot.geofenceValid ||
-    snapshot.wifiStatus != 'Trusted' ||
-    !snapshot.bleDetected ||
-    !snapshot.timeWindowValid ||
-    !hasActiveSession) {
-  await showSecurityDialog(forCheckout: false);
-  return;
-}
-
-
-  // SECOND: Open fingerprint only after security passes
-
-  final verified = await Navigator.push<bool>(
-  context,
-  MaterialPageRoute<bool>(
-    builder: (context) => const FingerprintScanScreen(),
-    settings: RouteSettings(
-      arguments: {
-        'fingerprintAttempts': fingerprintAttempts,
-      },
-    ),
-  ),
-);
-
-print('FINGERPRINT RESULT: $verified');
-
-
-
-
-  if (!mounted || verified != true) {
+      !snapshot.gpsValid ||
+      !snapshot.geofenceValid ||
+      snapshot.wifiStatus != 'Trusted' ||
+      !snapshot.bleDetected ||
+      !snapshot.timeWindowValid ||
+      !hasActiveSession) {
+    await showSecurityDialog(forCheckout: false);
     return;
   }
 
+  print("SECURITY CHECKS PASSED");
 
-  setState(() {
-    fingerprintPassed = true;
-  });
+  // 2. IDENTITY VERIFICATION
+final identityVerified = fingerprintPassed || otpVerified;
 
+print("FINGERPRINT PASSED: $fingerprintPassed");
+print("OTP VERIFIED: $otpVerified");
+print("IDENTITY VERIFIED: $identityVerified");
 
-  // THIRD: Record attendance
+if (!identityVerified) {
+  _snack('Fingerprint verification required');
+  return;
+}
+
+  // 3. CHECK-IN
+  final sessionId = activeSessionId;
+
+  if (sessionId == null) {
+    _snack('No attendance session available');
+    return;
+  }
+
+  final result = await attendanceService.checkIn(
+    sessionId: sessionId,
+    latitude: snapshot.latitude,
+    longitude: snapshot.longitude,
+  );
+
+  if (!mounted) return;
+
+  print("CHECK-IN RESPONSE: $result");
+
+  if (result['success'] == true) {
+    setState(() {
+      attendanceState = AttendanceFlowState.checkedIn;
+    });
+
+    _snack('Checked-in successfully');
+
+    await refreshSessionStatus(showSnack: false);
+    await loadAttendanceStats();
+
+    return;
+  }
+
+  final data = result['data'];
+
+  _snack(
+    data is Map && data['error'] != null
+        ? data['error'].toString()
+        : 'Check-in failed',
+  );
+}
+  Future<void> startCheckOut() async {
+  if (!mounted) return;
 
   try {
+    // =========================================================
+    // 1. REFRESH SESSION
+    // =========================================================
 
-    final current = await _currentLocation();
-
-    final sessionId = activeSessionId;
-
-
-    if (current.latitude == null ||
-        current.longitude == null ||
-        sessionId == null) {
-
-      throw Exception(
-        'Could not prepare attendance location/session',
-      );
-    }
-
-
-    final result = await attendanceService.checkIn(
-      sessionId: sessionId,
-      latitude: current.latitude!,
-      longitude: current.longitude!,
-    );
-
+    await refreshSessionStatus(showSnack: false);
 
     if (!mounted) return;
 
+    // =========================================================
+    // 2. VERIFY THAT THE BACKEND ALLOWS CHECKOUT
+    // =========================================================
 
-    if (result['success'] == true) {
+    final session = activeSession;
 
-      _snack(
-        'Checked-in successfully',
-      );
-
-
-      setState(() {
-        attendanceState =
-            AttendanceFlowState.checkedIn;
-      });
-
-
-      await Future.wait([
-        refreshSessionStatus(showSnack:false),
-        loadAttendanceStats(),
-      ]);
-
-    } else {
-  final data = Map<String, dynamic>.from(
-    result['data'] ?? {},
-  );
-
-  final message =
-      data['error'] ??
-      data['detail'] ??
-      data['message'] ??
-      'Check-in failed';
-
-  _snack(message);
-}
-
-
-  } catch(error){
-
-    if(mounted){
-      _snack(
-        error.toString()
-        .replaceFirst('Exception: ', ''),
-      );
-    }
-
-  }
-}
-  Future<void> startCheckOut() async {
-    await refreshSessionStatus(showSnack: false);
-    if (!canCheckOut()) {
-      await showSecurityDialog(forCheckout: true);
+    if (session == null) {
+      _snack('No attendance session available');
       return;
     }
 
-    try {
-      // The whole ordered validation must run again at checkout time.
-      await evaluateSecurity();
-      final snapshot = securitySnapshot;
-      if (snapshot == null ||
-          !snapshot.gpsValid ||
-          !snapshot.geofenceValid ||
-          snapshot.wifiStatus != 'Trusted' ||
-          !snapshot.bleDetected ||
-          !snapshot.timeWindowValid) {
-        await showSecurityDialog(forCheckout: true);
-        return;
-      }
-      final current = await _currentLocation();
-      final sessionId = activeSessionId;
-      if (sessionId == null || current.latitude == null || current.longitude == null) {
-        throw Exception('No active attendance session available');
-      }
+    final sessionId = session['session_id'];
+
+    final checkedIn = session['checked_in'] == true;
+    final checkedOut = session['checked_out'] == true;
+    final canCheckout = session['can_check_out'] == true;
+    final sessionEnded = session['session_ended'] == true;
+
+    if (!checkedIn) {
+      _snack('You are not checked in to this session');
+      return;
+    }
+
+    if (checkedOut) {
+      _snack('You have already checked out');
+      return;
+    }
+
+    if (!canCheckout && !sessionEnded) {
+    _snack('Checkout is not currently allowed');
+    return;
+    }
+
+    if (sessionId == null) {
+      _snack('Attendance session ID is missing');
+      return;
+    }
+
+    // =========================================================
+    // 3. GET CURRENT GPS
+    // =========================================================
+
+    await evaluateSecurity();
+
+    if (!mounted) return;
+
+    final snapshot = securitySnapshot;
+
+    if (snapshot == null) {
+      _snack('Unable to validate your location');
+      return;
+    }
+
+    if (!snapshot.gpsValid) {
+      _snack(snapshot.gpsMessage);
+      return;
+    }
+
+    if (!snapshot.geofenceValid) {
+      _snack(
+        'You are outside the attendance area '
+        '(${snapshot.distanceMeters.toStringAsFixed(1)} m away)',
+      );
+      return;
+    }
+
+    // =========================================================
+    // 4. CHECKOUT SECURITY CONDITIONS
+    // =========================================================
+
+    if (snapshot.wifiStatus != 'Trusted') {
+      _snack('Required WiFi validation failed');
+      return;
+    }
+
+    if (!snapshot.bleDetected) {
+      _snack('Required classroom beacon was not detected');
+      return;
+    }
+
+    if (!snapshot.timeWindowValid) {
+      _snack(snapshot.timeWindowMessage);
+      return;
+    }
+
+    // =========================================================
+    // 5. FINGERPRINT
+    // =========================================================
+
+    if (!checkoutIdentityVerified) {
+      await openFingerprintScan();
+
+      if (!mounted) return;
 
       if (!checkoutIdentityVerified) {
-        await openFingerprintScan();
-
-        if (!checkoutIdentityVerified) {
-          return;
-        }
+        _snack('Fingerprint verification required');
+        return;
       }
-      final result = await attendanceService.checkOut(
-        sessionId: sessionId,
-        latitude: current.latitude!,
-        longitude: current.longitude!,
-      );
-      if (!mounted) return;
-      if (result['success'] == true) {
-        _snack('Checked-out successfully');
-        setState(() => attendanceState = AttendanceFlowState.checkedOut);
-        await Future.wait([
-          refreshSessionStatus(showSnack: false),
-          loadAttendanceStats(),
-        ]);
-      } else {
-        final data = Map<String, dynamic>.from(result['data'] ?? {});
-        throw Exception(data['detail'] ?? data['error'] ?? 'Check-out failed');
-      }
-    } catch (error) {
-      if (mounted) _snack(error.toString().replaceFirst('Exception: ', ''));
     }
-  }
 
+    // =========================================================
+    // 6. SEND CHECKOUT REQUEST
+    // =========================================================
+
+    final result = await attendanceService.checkOut(
+      sessionId: sessionId as int,
+      latitude: snapshot.latitude,
+      longitude: snapshot.longitude,
+    );
+
+    if (!mounted) return;
+
+    // =========================================================
+    // 7. HANDLE RESPONSE
+    // =========================================================
+
+    if (result['success'] == true) {
+      setState(() {
+        attendanceState = AttendanceFlowState.checkedOut;
+        checkoutIdentityVerified = false;
+      });
+
+      _snack('Checked-out successfully');
+
+      await Future.wait([
+        refreshSessionStatus(showSnack: false),
+        loadAttendanceStats(),
+      ]);
+
+      return;
+    }
+
+    final data = Map<String, dynamic>.from(
+      result['data'] ?? {},
+    );
+
+    _snack(
+      data['detail']?.toString() ??
+          data['error']?.toString() ??
+          data['message']?.toString() ??
+          'Check-out failed',
+    );
+  } catch (error) {
+    if (!mounted) return;
+
+    _snack(
+      error
+          .toString()
+          .replaceFirst('Exception: ', ''),
+    );
+  }
+}
   Future<void> showSecurityDialog({required bool forCheckout}) async {
     final missing = missingSecuritySteps(forCheckout: forCheckout);
     await showDialog<void>(
@@ -607,12 +753,10 @@ print('FINGERPRINT RESULT: $verified');
   }
 
   Future<void> refreshAll() async {
-    await Future.wait([
-      evaluateSecurity(),
-      refreshSessionStatus(showSnack: false),
-      loadAttendanceStats(),
-    ]);
-  }
+  await refreshSessionStatus(showSnack: false);
+  await evaluateSecurity();
+  await loadAttendanceStats();
+}
 
   void _snack(String message) {
     ScaffoldMessenger.of(
@@ -628,10 +772,12 @@ print('FINGERPRINT RESULT: $verified');
         stats: attendanceStats,
         securitySnapshot: securitySnapshot,
         activeSession: activeSession,
-        sessionAvailable: hasActiveSession,
+        sessionAvailable: hasOpenSessionForCheckout,
+        checkoutSessionOpen: hasEndedCheckoutSession,
         attendanceState: attendanceState,
         fingerprintPassed: fingerprintPassed,
         otpVerified: otpVerified,
+        checkoutIdentityVerified: checkoutIdentityVerified,
         canCheckIn: canCheckIn(),
         canCheckOut: canCheckOut(),
         isSecurityLoading: isSecurityLoading,
@@ -712,6 +858,8 @@ class HomeTab extends StatelessWidget {
     required this.attendanceState,
     required this.fingerprintPassed,
     required this.otpVerified,
+    required this.checkoutIdentityVerified,
+    required this.checkoutSessionOpen,
     required this.canCheckIn,
     required this.canCheckOut,
     required this.isSecurityLoading,
@@ -730,6 +878,8 @@ class HomeTab extends StatelessWidget {
   final AttendanceFlowState attendanceState;
   final bool fingerprintPassed;
   final bool otpVerified;
+  final bool checkoutIdentityVerified;
+  final bool checkoutSessionOpen;
   final bool canCheckIn;
   final bool canCheckOut;
   final bool isSecurityLoading;
@@ -826,28 +976,38 @@ class HomeTab extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           _GeoAttendStatusCard(
-            snapshot: securitySnapshot,
-            isLoading: isSecurityLoading,
-            distanceFromClassroom: securitySnapshot?.distanceMeters,
-            hasActiveSession: sessionAvailable,
-          ),
+          snapshot: securitySnapshot,
+          isLoading: isSecurityLoading,
+          distanceFromClassroom: securitySnapshot?.distanceMeters,
+          hasActiveSession: sessionAvailable,
+          hasOpenSessionForCheckout:
+          activeSession?['session_id'] != null &&
+          (
+          activeSession?['session_active'] == true ||
+          (
+          activeSession?['session_ended'] == true &&
+          activeSession?['can_check_out'] == true
+          )
+        ),
+    ),
           const SizedBox(height: 12),
           _ConnectivityStatusCard(
             snapshot: securitySnapshot,
             sessionAvailable: activeSession != null,
           ),
           const SizedBox(height: 12),
-          _IdentityVerificationCard(
-            snapshot: securitySnapshot,
-            sessionAvailable: activeSession?['session_id'] != null,
-            verified: attendanceState == AttendanceFlowState.checkedIn &&
-                    activeSession?['active'] != true &&
-                    activeSession?['is_active'] != true
-                ? false
-                : fingerprintPassed || otpVerified,
-            verifiedByOtp: otpVerified,
-            onFingerprint: onFingerprint,
-          ),
+        _IdentityVerificationCard(
+  snapshot: securitySnapshot,
+  sessionAvailable: activeSession?['session_id'] != null &&
+      (activeSession?['session_active'] == true ||
+       activeSession?['can_check_out'] == true),
+  verified: checkoutSessionOpen
+      ? checkoutIdentityVerified
+      : (fingerprintPassed || otpVerified),
+  verifiedByOtp: otpVerified,
+  onFingerprint: onFingerprint,
+),
+
           const SizedBox(height: 12),
           _AttendanceOverviewCard(
             canCheckIn: canCheckIn,
@@ -1035,60 +1195,78 @@ class _GeoAttendStatusCard extends StatelessWidget {
     required this.isLoading,
     required this.distanceFromClassroom,
     required this.hasActiveSession,
+    required this.hasOpenSessionForCheckout,
   });
 
   final AttendanceSecuritySnapshot? snapshot;
   final bool isLoading;
   final double? distanceFromClassroom;
   final bool hasActiveSession;
-  
+  final bool hasOpenSessionForCheckout;
+
   @override
   Widget build(BuildContext context) {
+    final hasEndedCheckout =
+        snapshot?.sessionEnded == true &&
+        snapshot?.canCheckOut == true;
 
+    // A session can be either:
+    // 1. currently active, OR
+    // 2. ended but still available for student checkout.
+    final sessionAvailable =
+        hasActiveSession || hasOpenSessionForCheckout;
 
-   final hasEndedCheckout =
-      snapshot?.sessionEnded == true &&
-      snapshot?.canCheckOut == true;
+    final valid =
+        sessionAvailable &&
+        snapshot?.gpsValid == true &&
+        snapshot?.geofenceValid == true;
 
-   final valid =
-    hasActiveSession &&
-    snapshot?.gpsValid == true &&
-    snapshot?.geofenceValid == true;
+    String geofenceStatus;
+
+    if (snapshot == null) {
+      geofenceStatus = 'Checking location...';
+    } else if (!snapshot!.gpsValid) {
+      geofenceStatus = 'GPS validation pending';
+    } else if (!sessionAvailable) {
+      geofenceStatus = 'No attendance session';
+    } else if (!snapshot!.geofenceValid) {
+      geofenceStatus = 'Outside geofence';
+    } else if (hasEndedCheckout) {
+      geofenceStatus = 'Inside Geofence - Checkout available';
+    } else {
+      geofenceStatus = 'Inside Geofence confirmed';
+    }
+
     return _GlassCard(
       title: 'Geo Attend Status',
       icon: Icons.location_on_outlined,
       accent: valid ? Colors.green : Colors.orange,
       child: isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(
+              child: CircularProgressIndicator(),
+            )
           : Column(
               children: [
                 _MetricRow(
-                    label: 'Distance',
-                    value: snapshot != null
-                          ? '${snapshot!.distanceMeters.toStringAsFixed(1)} m'
-                          : '-',
+                  label: 'Distance',
+                  value: snapshot != null
+                      ? '${snapshot!.distanceMeters.toStringAsFixed(1)} m'
+                      : '-',
                 ),
+
                 _MetricRow(
                   label: 'Radius',
                   value: snapshot != null
-                    ? '${snapshot!.radiusMeters.toStringAsFixed(0)} m'
-                    : '-',
+                      ? '${snapshot!.radiusMeters.toStringAsFixed(0)} m'
+                      : '-',
                 ),
+
                 _MetricRow(
                   label: 'Geofence status',
-                 value:
-
-                  !hasActiveSession
-                    ? 'No active session'
-                    :
-                  hasEndedCheckout
-                    ? 'Session ended - Checkout available'
-
-                    :
-                    valid
-                      ? 'Inside Geofence confirmed'
-                      : 'Outside geofence',
-                  valueColor: valid ? Colors.green : Colors.redAccent,
+                  value: geofenceStatus,
+                  valueColor: valid
+                      ? Colors.green
+                      : Colors.redAccent,
                 ),
               ],
             ),
@@ -1141,121 +1319,141 @@ class _ConnectivityStatusCard extends StatelessWidget {
 }
 
 class _IdentityVerificationCard extends StatelessWidget {
-  const _IdentityVerificationCard({
-    required this.snapshot,
-    required this.sessionAvailable,
-    required this.verified,
-    required this.verifiedByOtp,
-    required this.onFingerprint,
-  });
-  final AttendanceSecuritySnapshot? snapshot;
-  final bool sessionAvailable;
-  final bool verified;
-  final bool verifiedByOtp;
-  final Future<void> Function() onFingerprint;
-  @override
-  Widget build(BuildContext context) {
-    
-    final enabled =
-    sessionAvailable &&
-    snapshot?.geofenceValid == true &&
-    snapshot?.wifiStatus == 'Trusted' &&
-    snapshot?.bleDetected == true &&
-    !verified;
+const _IdentityVerificationCard({
+required this.snapshot,
+required this.sessionAvailable,
+required this.verified,
+required this.verifiedByOtp,
+required this.onFingerprint,
+});
+
+final AttendanceSecuritySnapshot? snapshot;
+final bool sessionAvailable;
+final bool verified;
+final bool verifiedByOtp;
+final Future<void> Function() onFingerprint;
+
+@override
+Widget build(BuildContext context) {
+final securityReady =
+sessionAvailable &&
+snapshot?.geofenceValid == true &&
+snapshot?.wifiStatus == 'Trusted' &&
+snapshot?.bleDetected == true;
 
 
-    return _GlassCard(
-      title: 'Security Verification',
-      icon: Icons.verified_user_outlined,
-      accent: verified ? Colors.green : Colors.amber,
-      child: Column(
-        children: [
-          _MetricRow(
-            label: 'GPS',
-            value: !sessionAvailable
-                ? 'Waiting for session'
-                : snapshot?.gpsValid == true
-                  ? 'Confirmed'
-                  : 'Pending',
-            valueColor:
-              sessionAvailable && snapshot?.gpsValid == true
-              ? Colors.green
-              : Colors.orange,
-          ),
-          _MetricRow(
-            label: 'WiFi',
-            value: !sessionAvailable
-                ? 'Waiting for session'
-                : snapshot?.wifiLabel ?? 'Pending',
-            valueColor:
-              sessionAvailable && snapshot?.wifiStatus == 'Trusted'
+return _GlassCard(
+  title: 'Security Verification',
+  icon: Icons.verified_user_outlined,
+  accent: verified ? Colors.green : Colors.amber,
+  child: Column(
+    children: [
+      _MetricRow(
+        label: 'GPS',
+        value: !sessionAvailable
+            ? 'Waiting for session'
+            : snapshot?.gpsValid == true
+                ? 'Confirmed'
+                : 'Pending',
+        valueColor:
+            sessionAvailable && snapshot?.gpsValid == true
                 ? Colors.green
                 : Colors.orange,
-          ),
-          _MetricRow(
-            label: 'BLE',
-            value: !sessionAvailable
-              ? 'Waiting for session'
-              : snapshot?.bleStatus ?? 'Pending',
-            valueColor: snapshot?.bleDetected == true
-                ? Colors.green
-                : Colors.orange,
-          ),
-          _MetricRow(
-            label: 'Biometrics',
-            value: !sessionAvailable
-                ? 'Not required'
-                : verified
-                  ? (verifiedByOtp
-                      ? 'OTP verified'
-                      : 'Fingerprint verified')
-                      : 'Pending',
-            valueColor:
-              sessionAvailable && snapshot?.bleDetected == true
-                ? Colors.green
-                : Colors.orange,
-          ),
-          const SizedBox(height: 14),
-          SizedBox(
-            width: 128,
-            height: 128,
-            child: FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: _primary,
-                foregroundColor: Colors.white,
-                shape: const CircleBorder(),
-              ),
-              onPressed: sessionAvailable
-              ? () async {
-                print("Fingerprint button pressed");
-                await onFingerprint();
-             }
-              : null,
-              
-              child: Icon(
-                verifiedByOtp ? Icons.sms_outlined : Icons.fingerprint,
-                size: 64,
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          FilledButton.icon(
-            onPressed: enabled
-            ? () async {
-            print("Scan Fingerprint pressed");
-            await onFingerprint();
-            }
-            : null,
-            icon: const Icon(Icons.fingerprint),
-            label: Text(
-            verified ? 'Identity Verified' : 'Scan Fingerprint',
-          ),
-          ),
-        ],
       ),
-    );
-  }
+
+      _MetricRow(
+        label: 'WiFi',
+        value: !sessionAvailable
+            ? 'Waiting for session'
+            : snapshot?.wifiLabel ?? 'Pending',
+        valueColor:
+            sessionAvailable &&
+                    snapshot?.wifiStatus == 'Trusted'
+                ? Colors.green
+                : Colors.orange,
+      ),
+
+      _MetricRow(
+        label: 'BLE',
+        value: !sessionAvailable
+            ? 'Waiting for session'
+            : snapshot?.bleStatus ?? 'Pending',
+        valueColor:
+            snapshot?.bleDetected == true
+                ? Colors.green
+                : Colors.orange,
+      ),
+
+      _MetricRow(
+        label: 'Biometrics',
+        value: !sessionAvailable
+            ? 'Not required'
+            : verified
+                ? (verifiedByOtp
+                    ? 'OTP verified'
+                    : 'Fingerprint verified')
+                : 'Pending',
+        valueColor:
+            verified ? Colors.green : Colors.orange,
+      ),
+
+      const SizedBox(height: 14),
+
+      SizedBox(
+        width: 128,
+        height: 128,
+        child: FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor:
+                verified ? Colors.green : _primary,
+            foregroundColor: Colors.white,
+            shape: const CircleBorder(),
+          ),
+
+          // Do NOT open fingerprint again after verification.
+          onPressed: securityReady && !verified
+              ? () async {
+                  await onFingerprint();
+                }
+              : null,
+
+          child: Icon(
+            verifiedByOtp
+                ? Icons.sms_outlined
+                : verified
+                    ? Icons.verified
+                    : Icons.fingerprint,
+            size: 64,
+          ),
+        ),
+      ),
+
+      const SizedBox(height: 12),
+
+      FilledButton.icon(
+        onPressed: securityReady && !verified
+            ? () async {
+                await onFingerprint();
+              }
+            : null,
+        icon: Icon(
+          verified
+              ? Icons.check_circle
+              : Icons.fingerprint,
+        ),
+        label: Text(
+          verified
+              ? 'Identity Verified'
+              : 'Scan Fingerprint',
+        ),
+      ),
+    ],
+  ),
+);
+
 }
+}
+
 
 class _AttendanceOverviewCard extends StatelessWidget {
   const _AttendanceOverviewCard({
@@ -1427,17 +1625,16 @@ String _fullName(Map<String, dynamic>? user, Map<String, dynamic>? stats) {
   return user?['username']?.toString() ?? 'User';
 }
 
-String _sessionStatusLabel(Map<String, dynamic>? session) {
-  if (session == null) return 'No Session';
-
-  final state = session['attendance_state']?.toString();
-
-  if (state == 'CHECKED_IN') {
-    return 'Checked In';
+String _sessionStatusLabel(
+  Map<String, dynamic>? session,
+) {
+  if (session == null) {
+    return 'No Session';
   }
 
-  if (state == 'CHECKED_OUT') {
-    return 'Checked Out';
+  if (session['session_ended'] == true &&
+      session['can_check_out'] == true) {
+    return 'Ended';
   }
 
   if (session['session_active'] == true) {
@@ -1452,9 +1649,18 @@ String _sessionStatusLabel(Map<String, dynamic>? session) {
 }
 
 Color _sessionStatusColor(String label) {
-  if (label == 'Checked In') return Colors.green;
-  if (label == 'Checked Out') return Colors.blue;
-  if (label == 'Pending') return Colors.orange;
+  if (label == 'Active') {
+    return Colors.green;
+  }
+
+  if (label == 'Ended') {
+    return Colors.orange;
+  }
+
+  if (label == 'No Session') {
+    return Colors.redAccent;
+  }
+
   return Colors.orange;
 }
 
