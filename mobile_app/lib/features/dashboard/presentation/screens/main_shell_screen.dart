@@ -249,12 +249,6 @@ class _MainShellScreenState extends State<MainShellScreen>
 
   final sessionExists = sessionId != null;
 
-  final sessionEnded =
-      data['session_ended'] == true;
-
-  final canCheckout =
-      data['can_check_out'] == true;
-
   final checkedIn =
       data['checked_in'] == true;
 
@@ -298,15 +292,6 @@ class _MainShellScreenState extends State<MainShellScreen>
     } else {
       attendanceState =
           AttendanceFlowState.notCheckedIn;
-    }
-
-    // Fresh identity verification is required
-    // for checkout after the session has ended.
-    if (sessionEnded &&
-        canCheckout &&
-        attendanceState ==
-            AttendanceFlowState.checkedIn) {
-      checkoutIdentityVerified = false;
     }
   });
 }
