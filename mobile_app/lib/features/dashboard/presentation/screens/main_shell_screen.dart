@@ -977,6 +977,7 @@ class HomeTab extends StatelessWidget {
           isLoading: isSecurityLoading,
           distanceFromClassroom: securitySnapshot?.distanceMeters,
           hasActiveSession: sessionAvailable,
+          attendanceState: attendanceState,
           hasOpenSessionForCheckout:
           activeSession?['session_id'] != null &&
           (
@@ -1189,6 +1190,7 @@ class _GeoAttendStatusCard extends StatelessWidget {
     required this.distanceFromClassroom,
     required this.hasActiveSession,
     required this.hasOpenSessionForCheckout,
+    required this.attendanceState,
   });
 
   final AttendanceSecuritySnapshot? snapshot;
@@ -1196,6 +1198,7 @@ class _GeoAttendStatusCard extends StatelessWidget {
   final double? distanceFromClassroom;
   final bool hasActiveSession;
   final bool hasOpenSessionForCheckout;
+  final AttendanceFlowState attendanceState;
 
   @override
   Widget build(BuildContext context) {
@@ -1216,19 +1219,21 @@ class _GeoAttendStatusCard extends StatelessWidget {
 
     String geofenceStatus;
 
-    if (snapshot == null) {
-      geofenceStatus = 'Checking location...';
-    } else if (!snapshot!.gpsValid) {
-      geofenceStatus = 'GPS validation pending';
-    } else if (!sessionAvailable) {
-      geofenceStatus = 'No attendance session';
-    } else if (!snapshot!.geofenceValid) {
-      geofenceStatus = 'Outside geofence';
-    } else if (hasEndedCheckout) {
-      geofenceStatus = 'Inside Geofence - Checkout available';
-    } else {
-      geofenceStatus = 'Inside Geofence confirmed';
-    }
+if (attendanceState == AttendanceFlowState.checkedOut) {
+  geofenceStatus = '-';
+} else if (snapshot == null) {
+  geofenceStatus = 'Checking location...';
+} else if (!snapshot!.gpsValid) {
+  geofenceStatus = 'GPS validation pending';
+} else if (!sessionAvailable) {
+  geofenceStatus = 'No attendance session';
+} else if (!snapshot!.geofenceValid) {
+  geofenceStatus = 'Outside geofence';
+} else if (hasEndedCheckout) {
+  geofenceStatus = 'Inside Geofence - Checkout available';
+} else {
+  geofenceStatus = 'Inside Geofence confirmed';
+}
 
     return _GlassCard(
       title: 'Geo Attend Status',
@@ -1242,17 +1247,21 @@ class _GeoAttendStatusCard extends StatelessWidget {
               children: [
                 _MetricRow(
                   label: 'Distance',
-                  value: snapshot != null
-                      ? '${snapshot!.distanceMeters.toStringAsFixed(1)} m'
-                      : '-',
-                ),
+                  value: attendanceState == AttendanceFlowState.checkedOut
+                  ? '-'
+                  : snapshot != null
+                   ? '${snapshot!.distanceMeters.toStringAsFixed(1)} m'
+                    : '-',
+         ),
 
                 _MetricRow(
-                  label: 'Radius',
-                  value: snapshot != null
-                      ? '${snapshot!.radiusMeters.toStringAsFixed(0)} m'
-                      : '-',
-                ),
+                    label: 'Radius',
+                    value: attendanceState == AttendanceFlowState.checkedOut
+                    ? '-'
+                    : snapshot != null
+                    ? '${snapshot!.radiusMeters.toStringAsFixed(0)} m'
+                    : '-',
+                  ),
 
                 _MetricRow(
                   label: 'Geofence status',

@@ -1327,46 +1327,21 @@ def active_session(request):
 
     if completed:
 
-       session = completed.session
-
-    if (
-        session.checkout_deadline
-        and now <= session.checkout_deadline
-    ):
-
         return Response({
-            "session_exists": True,
-            "session_id": session.id,
+        "session_exists": False,
 
-            "session_active": False,
-            "session_ended": True,
+        "attendance_state": "CHECKED_OUT",
 
-            "start_time": session.start_time.isoformat()
-            if session.start_time else None,
+        "checked_in": False,
+        "checked_out": True,
 
-            "end_time": session.end_time.isoformat()
-            if session.end_time else None,
+        "can_check_in": False,
+        "can_check_out": False,
 
-            "checkout_deadline": session.checkout_deadline.isoformat()
-            if session.checkout_deadline else None,
+        "percentage": completed.attendance_percentage,
 
-            "percentage": completed.attendance_percentage,
-
-            "course": session.course.name,
-            "subject": session.subject.name,
-
-            "latitude": session.latitude,
-            "longitude": session.longitude,
-            "radius_meters": session.radius_meters,
-
-            "attendance_state": "CHECKED_OUT",
-
-            "checked_in": False,
-            "checked_out": True,
-
-            "can_check_in": False,
-            "can_check_out": False,
-        })
+        "message": "Attendance already completed"
+    })
 
     return Response({
         "session_exists": False,
