@@ -1,113 +1,487 @@
 import 'package:flutter/material.dart';
+import 'package:mobile_app/core/storage/storage_service.dart';
+import 'package:mobile_app/features/dashboard/data/dashboard_service.dart';
 
-class AttendanceHistoryScreen extends StatelessWidget {
+
+class AttendanceHistoryScreen extends StatefulWidget {
   const AttendanceHistoryScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
+  State<AttendanceHistoryScreen> createState() =>
+      _AttendanceHistoryScreenState();
+}
 
-          const Text(
-            'Attendance Summary',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
 
-          const SizedBox(height: 16),
+class _AttendanceHistoryScreenState
+    extends State<AttendanceHistoryScreen> {
 
-          Card(
-            child: ListTile(
-              title: const Text('Overall Attendance'),
-              trailing: const Text(
-                '82%',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
 
-          const SizedBox(height: 20),
+  final DashboardService dashboardService =
+      DashboardService();
 
-          const Text(
-            'Subject Performance',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
 
-          Card(
-            child: Column(
-              children: const [
+  Map<String, dynamic>? history;
 
-                ListTile(
-                  title: Text('Computer Networks'),
-                  trailing: Text('90%'),
-                ),
+  bool loading = true;
 
-                ListTile(
-                  title: Text('Database Systems'),
-                  trailing: Text('75%'),
-                ),
+  String? errorMessage;
 
-                ListTile(
-                  title: Text('Software Engineering'),
-                  trailing: Text('60%'),
-                ),
 
-              ],
-            ),
-          ),
 
-          const SizedBox(height: 20),
+  @override
+  void initState() {
+    super.initState();
 
-          const Text(
-            'Recent Attendance',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-
-          Card(
-            child: Column(
-              children: const [
-
-                ListTile(
-                  title: Text('Computer Networks'),
-                  subtitle: Text('03 Aug 2026'),
-                  trailing: Text(
-                    'Present',
-                    style: TextStyle(
-                      color: Colors.green,
-                    ),
-                  ),
-                ),
-
-                ListTile(
-                  title: Text('Database Systems'),
-                  subtitle: Text('01 Aug 2026'),
-                  trailing: Text(
-                    'Late',
-                    style: TextStyle(
-                      color: Colors.orange,
-                    ),
-                  ),
-                ),
-
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+    loadHistory();
   }
+
+
+
+  Future<void> loadHistory() async {
+
+    try {
+
+      final token =
+          await StorageService.getAccessToken();
+
+
+      if(token == null){
+
+        setState(() {
+
+          loading = false;
+
+          errorMessage =
+              "Authentication token missing";
+
+        });
+
+        return;
+      }
+
+
+
+      final result =
+          await dashboardService.getAttendanceHistory(token);
+
+
+
+      if(result['success'] == true){
+
+
+        setState(() {
+
+          history =
+              Map<String,dynamic>.from(
+                result['data']
+              );
+
+          loading = false;
+
+        });
+
+
+      }
+      else {
+
+
+        setState(() {
+
+          loading = false;
+
+          errorMessage =
+              "Failed to load attendance history";
+
+        });
+
+
+      }
+
+
+    }
+
+    catch(e){
+
+      setState(() {
+
+        loading = false;
+
+        errorMessage =
+            e.toString();
+
+      });
+
+    }
+
+  }
+
+
+
+  @override
+  Widget build(BuildContext context) {
+
+
+    if(loading){
+
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
+
+    }
+
+
+
+    if(errorMessage != null){
+
+      return Center(
+
+        child: Column(
+
+          mainAxisAlignment:
+              MainAxisAlignment.center,
+
+          children: [
+
+
+            Text(
+              errorMessage!,
+              textAlign: TextAlign.center,
+            ),
+
+
+            const SizedBox(height: 15),
+
+
+            ElevatedButton(
+
+              onPressed: loadHistory,
+
+              child:
+                  const Text("Retry"),
+
+            )
+
+
+          ],
+
+        ),
+
+      );
+
+    }
+
+
+
+    final overall =
+        history?['overall_percentage'] ?? 0;
+
+
+
+    final subjects =
+        history?['subjects'] ?? [];
+
+
+
+    final recent =
+        history?['recent'] ?? [];
+
+
+
+
+    return Scaffold(
+
+      backgroundColor:
+          const Color(0xFFF8FAFC),
+
+
+      body: RefreshIndicator(
+
+        onRefresh: loadHistory,
+
+
+        child: ListView(
+
+          padding:
+              const EdgeInsets.all(16),
+
+
+          children: [
+
+
+
+            const Text(
+
+              "Attendance Summary",
+
+              style: TextStyle(
+
+                fontSize: 22,
+
+                fontWeight:
+                    FontWeight.bold,
+
+              ),
+
+            ),
+
+
+
+            const SizedBox(height:16),
+
+
+
+
+            Card(
+
+              child: ListTile(
+
+                title:
+                    const Text(
+                      "Overall Attendance",
+                    ),
+
+
+                trailing:
+
+                    Text(
+
+                      "$overall%",
+
+                      style:
+                          const TextStyle(
+
+                        fontSize:20,
+
+                        fontWeight:
+                            FontWeight.bold,
+
+                      ),
+
+                    ),
+
+              ),
+
+            ),
+
+
+
+
+            const SizedBox(height:25),
+
+
+
+
+            const Text(
+
+              "Subject Performance",
+
+              style: TextStyle(
+
+                fontSize:18,
+
+                fontWeight:
+                    FontWeight.bold,
+
+              ),
+
+            ),
+
+
+
+            const SizedBox(height:10),
+
+
+
+
+            Card(
+
+              child: Column(
+
+                children:
+
+                List.generate(
+
+                  subjects.length,
+
+                  (index){
+
+
+                    final subject =
+                        subjects[index];
+
+
+                    return ListTile(
+
+                      title:
+                          Text(
+                            subject['subject']
+                                .toString(),
+                          ),
+
+
+                      trailing:
+                          Text(
+
+                            "${subject['percentage']}%",
+
+                            style:
+                                const TextStyle(
+
+                              fontWeight:
+                                  FontWeight.bold,
+
+                            ),
+
+                          ),
+
+                    );
+
+
+                  },
+
+                ),
+
+              ),
+
+            ),
+
+
+
+
+            const SizedBox(height:25),
+
+
+
+
+            const Text(
+
+              "Recent Attendance",
+
+              style: TextStyle(
+
+                fontSize:18,
+
+                fontWeight:
+                    FontWeight.bold,
+
+              ),
+
+            ),
+
+
+
+
+            const SizedBox(height:10),
+
+
+
+
+            Card(
+
+              child: Column(
+
+                children:
+
+                List.generate(
+
+                  recent.length,
+
+                  (index){
+
+
+                    final attendance =
+                        recent[index];
+
+
+
+                    final status =
+                        attendance['status']
+                            .toString();
+
+
+
+                    return ListTile(
+
+
+                      title:
+                          Text(
+
+                            attendance['subject']
+                                .toString(),
+
+                          ),
+
+
+
+                      subtitle:
+                          Text(
+
+                            attendance['date']
+                                .toString(),
+
+                          ),
+
+
+
+                      trailing:
+                          Text(
+
+                            status,
+
+                            style:
+                                TextStyle(
+
+                              fontWeight:
+                                  FontWeight.bold,
+
+
+                              color:
+
+                              status ==
+                                  "PRESENT"
+
+                                  ? Colors.green
+
+
+                                  :
+
+                              status ==
+                                  "LATE"
+
+                                  ? Colors.orange
+
+
+                                  :
+
+                              Colors.red,
+
+                            ),
+
+                          ),
+
+
+                    );
+
+
+                  },
+
+                ),
+
+              ),
+
+            ),
+
+
+
+          ],
+
+        ),
+
+      ),
+
+    );
+
+
+  }
+
 }

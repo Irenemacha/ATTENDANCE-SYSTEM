@@ -137,4 +137,34 @@ Future<Map<String, dynamic>> markAllNotificationsRead(
   };
 
 }
+
+Future<Map<String, dynamic>> getAttendanceHistory(
+    String token
+) async {
+
+  final url = Uri.parse(
+    "${baseUrl}attendance/history/"
+  );
+
+  final response = await http.get(
+    url,
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer $token",
+    },
+  );
+
+
+  final body = response.body.isEmpty
+      ? {}
+      : jsonDecode(response.body);
+
+
+  return {
+    "success": response.statusCode == 200,
+    "data": body,
+  };
+
+}
+
 }

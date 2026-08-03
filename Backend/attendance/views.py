@@ -1327,7 +1327,12 @@ def active_session(request):
 
     if completed:
 
-        session = completed.session
+       session = completed.session
+
+    if (
+        session.checkout_deadline
+        and now <= session.checkout_deadline
+    ):
 
         return Response({
             "session_exists": True,
@@ -1336,20 +1341,14 @@ def active_session(request):
             "session_active": False,
             "session_ended": True,
 
-            "start_time": (
-                session.start_time.isoformat()
-                if session.start_time else None
-            ),
+            "start_time": session.start_time.isoformat()
+            if session.start_time else None,
 
-            "end_time": (
-                session.end_time.isoformat()
-                if session.end_time else None
-            ),
+            "end_time": session.end_time.isoformat()
+            if session.end_time else None,
 
-            "checkout_deadline": (
-                session.checkout_deadline.isoformat()
-                if session.checkout_deadline else None
-            ),
+            "checkout_deadline": session.checkout_deadline.isoformat()
+            if session.checkout_deadline else None,
 
             "percentage": completed.attendance_percentage,
 
@@ -1367,16 +1366,6 @@ def active_session(request):
 
             "can_check_in": False,
             "can_check_out": False,
-
-            "auto_closed": session.auto_closed,
-
-            "beacon_id": (
-                session.classroom.beacon.beacon_id
-                if session.classroom
-                and hasattr(session.classroom, "beacon")
-                and session.classroom.beacon
-                else None
-            ),
         })
 
     return Response({
@@ -1386,7 +1375,7 @@ def active_session(request):
         "checked_out": False,
         "can_check_in": False,
         "can_check_out": False,
-        "message": "No attendance session available",
+        "message": "No active attendance session available",
     })
 
 

@@ -5,7 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 
 from accounts.permissions import IsStudent
 
-from django.db.models import Sum
+
 
 from attendance.models import Attendance, AttendanceSession
 
@@ -18,8 +18,8 @@ def student_dashboard(request):
         # ✅ correct direction: User → Student
         student = Student.objects.get(user=user)
 
-        total_sessions = AttendanceSession.objects.filter(
-            course=student.course
+        total_sessions = Attendance.objects.filter(
+        student=student
         ).count()
         
         print("DEBUG TOTAL SESSIONS:", total_sessions)
@@ -27,33 +27,16 @@ def student_dashboard(request):
         # A session counts as attended only after its matching check-in and
         # check-out have both been recorded. This keeps the percentage based
         # on total sessions versus completed attendance sessions.
-        attendance_records = Attendance.objects.filter(
-        student=student
-        )
+        attendance_records = Attendance.objects.filter(student=student)
 
-
+        # Count attended sessions: statuses that count as attendance
         attended_sessions = attendance_records.filter(
-        check_in_time__isnull=False
-        ).exclude(
-          status="ABSENT"
+            status__in=["PRESENT", "LATE", "PARTIAL_ATTENDANCE"]
         ).count()
 
+        total_absent = attendance_records.filter(status="ABSENT").count()
 
-        total_absent = attendance_records.filter(
-        status="ABSENT"
-        ).count()
-
-
-# Calculate actual attendance percentage
-        total_percentage = attendance_records.aggregate(
-        total=Sum("attendance_percentage")
-        )["total"] or 0
-
-
-        percentage = round(
-        total_percentage / total_sessions,
-        2
-        )   if total_sessions > 0 else 0 
+        percentage = round((attended_sessions / total_sessions) * 100, 2) if total_sessions > 0 else 0
         status = "Fine" if percentage >= 75 else "Critical"
 
         return Response({

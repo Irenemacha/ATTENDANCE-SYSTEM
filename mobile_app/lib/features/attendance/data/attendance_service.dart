@@ -1,6 +1,7 @@
 
 import 'dart:convert';
 
+
 import 'package:http/http.dart' as http;
 import 'package:mobile_app/core/constants/api_constants.dart';
 import 'package:mobile_app/core/storage/storage_service.dart';
@@ -189,3 +190,52 @@ class AttendanceService {
   }
 }
 
+Future<Map<String, dynamic>> getAttendanceHistory() async {
+
+  try {
+
+    final token = await StorageService.getAccessToken();
+
+    if (token == null) {
+      return {
+        "success": false,
+        "error": "No authentication token found",
+      };
+    }
+
+
+    final url = Uri.parse(
+      "${ApiConstants.baseUrl}attendance/history/",
+    );
+
+
+    final response = await http.get(
+      url,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $token",
+      },
+    );
+
+
+    final body = response.body.isEmpty
+        ? {}
+        : jsonDecode(response.body);
+
+
+    return {
+      "success": response.statusCode == 200,
+      "data": body,
+    };
+
+
+  } catch (e) {
+
+    return {
+      "success": false,
+      "error": e.toString(),
+    };
+
+  }
+
+}
