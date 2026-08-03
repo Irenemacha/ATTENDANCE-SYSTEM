@@ -257,30 +257,23 @@ class _MainShellScreenState extends State<MainShellScreen>
       data['checked_out'] == true;
 
   // ============================================
-  // NO SESSION
-  // ============================================
+// NO SESSION
+// ============================================
 
-  if (!sessionExists) {
+if (!sessionExists) {
   setState(() {
     activeSession = null;
-    attendanceState = AttendanceFlowState.notCheckedIn;
-
-    fingerprintPassed = false;
-    otpVerified = false;
-
-    // DO NOT CLEAR CHECKOUT VERIFICATION HERE
-    // Student may still need checkout after session ends.
   });
 
-    if (showSnack) {
-      _snack(
-        data['message']?.toString() ??
-            'No attendance session available',
-      );
-    }
-
-    return;
+  if (showSnack) {
+    _snack(
+      data['message']?.toString() ??
+          'No attendance session available',
+    );
   }
+
+  return;
+}
 
   // ============================================
   // SESSION EXISTS
@@ -288,19 +281,30 @@ class _MainShellScreenState extends State<MainShellScreen>
   // ============================================
 
   setState(() {
-    activeSession = data;
+  activeSession = data;
 
-    if (checkedOut) {
-      attendanceState =
-          AttendanceFlowState.checkedOut;
-    } else if (checkedIn) {
-      attendanceState =
-          AttendanceFlowState.checkedIn;
-    } else {
-      attendanceState =
-          AttendanceFlowState.notCheckedIn;
-    }
-  });
+  if (checkedOut) {
+  attendanceState = AttendanceFlowState.checkedOut;
+
+  // Do NOT reset checkoutIdentityVerified here.
+  // It is cleared only after the local checkout flow
+  // successfully completes.
+}
+   else if (checkedIn) {
+  attendanceState = AttendanceFlowState.checkedIn;
+
+  // Do NOT reset checkoutIdentityVerified here.
+  //
+  // The student may have already successfully
+  // verified their identity for checkout.
+  //
+  // Background session refreshes must not invalidate
+  // a successful verification.
+}
+  else {
+    attendanceState = AttendanceFlowState.notCheckedIn;
+  }
+});
 }
   int? get activeSessionId {
   final raw = activeSession?['session_id'];
@@ -338,19 +342,20 @@ class _MainShellScreenState extends State<MainShellScreen>
     return fingerprintPassed || otpVerified;
 }
   bool canCheckOut() {
-  if (!hasOpenSessionForCheckout) {
+  final session = activeSession;
+
+  if (session == null) {
     return false;
   }
 
   final checkedIn =
-      activeSession?['checked_in'] == true ||
+      session['checked_in'] == true ||
       attendanceState == AttendanceFlowState.checkedIn;
 
-  if (!checkedIn) {
-    return false;
-  }
+  final sessionEnded = session['session_ended'] == true;
+  final canCheckout = session['can_check_out'] == true;
 
-  return activeSession?['can_check_out'] == true;
+  return checkedIn && sessionEnded && canCheckout;
 }
 
   // Once checked in, don't allow another check-in.
@@ -407,8 +412,19 @@ double? distanceFromClassroom;
     return missing;
   }
 
-  Future<void> openFingerprintScan() async {
+  Future<void> openFingerprintScan({
+  bool forCheckout = false,
+}) async {
   if (!mounted) return;
+
+  // BLOCK RE-SCANNING AFTER SUCCESSFUL VERIFICATION
+  if (!forCheckout && (fingerprintPassed || otpVerified)) {
+    return;
+  }
+
+  if (forCheckout && checkoutIdentityVerified) {
+    return;
+  }
 
   final verified = await Navigator.push<bool>(
     context,
@@ -422,35 +438,30 @@ double? distanceFromClassroom;
     ),
   );
 
-  if (!mounted) return;
+  if (!mounted || verified != true) return;
 
-  print("FINGERPRINT RESULT: $verified");
-
-  if (verified != true) {
-    return;
-  }
-
-  // Tell backend that fingerprint verification succeeded.
   final verification =
       await AttendanceSecurityService().verifyFingerprint(
     success: true,
   );
 
-  print("SERVER FINGERPRINT VERIFICATION: $verification");
-
   if (!mounted) return;
 
   if (verification['success'] == true) {
     setState(() {
-      fingerprintPassed = true;
-      otpVerified = false;
-
-      if (attendanceState == AttendanceFlowState.checkedIn) {
+      if (forCheckout) {
         checkoutIdentityVerified = true;
-    }
+      } else {
+        fingerprintPassed = true;
+        otpVerified = false;
+      }
     });
 
-    _snack('Identity Verified Successfully');
+    _snack(
+      forCheckout
+          ? 'Checkout identity verified successfully'
+          : 'Identity verified successfully',
+    );
   } else {
     _snack('Fingerprint verification failed');
   }
@@ -574,9 +585,9 @@ if (!identityVerified) {
       return;
     }
 
-    if (!canCheckout && !sessionEnded) {
-    _snack('Checkout is not currently allowed');
-    return;
+    if (!sessionEnded || !canCheckout) {
+      _snack('Checkout is only available after the lecturer ends the session');
+      return;
     }
 
     if (sessionId == null) {
@@ -632,18 +643,12 @@ if (!identityVerified) {
     }
 
     // =========================================================
-    // 5. FINGERPRINT
-    // =========================================================
+// 5. FINGERPRINT MUST ALREADY BE VERIFIED
+// =========================================================
 
     if (!checkoutIdentityVerified) {
-      await openFingerprintScan();
-
-      if (!mounted) return;
-
-      if (!checkoutIdentityVerified) {
-        _snack('Fingerprint verification required');
+        _snack('Please scan your fingerprint first');
         return;
-      }
     }
 
     // =========================================================
@@ -741,14 +746,14 @@ if (!identityVerified) {
             child: const Text('Close'),
           ),
           if ((forCheckout ? !checkoutIdentityVerified : !identityVerified) &&
-              activeSessionId != null)
-            FilledButton(
-              onPressed: () {
-                Navigator.pop(context);
-                openFingerprintScan();
-              },
-              child: const Text('Scan Fingerprint'),
-            ),
+    activeSessionId != null)
+  FilledButton(
+    onPressed: () {
+      Navigator.pop(context);
+      openFingerprintScan(forCheckout: forCheckout);
+    },
+    child: const Text('Scan Fingerprint'),
+  ),
         ],
       ),
     );
@@ -882,7 +887,9 @@ class HomeTab extends StatelessWidget {
   final bool isSecurityLoading;
   final double? distanceFromClassroom;
   final Future<void> Function() onRefresh;
-  final Future<void> Function() onFingerprint;
+  final Future<void> Function({
+  bool forCheckout,
+  }) onFingerprint;
   final VoidCallback onCheckIn;
   final VoidCallback onCheckOut;
   
@@ -997,8 +1004,20 @@ class HomeTab extends StatelessWidget {
         _IdentityVerificationCard(
   snapshot: securitySnapshot,
   sessionAvailable: sessionAvailable,
-  verified: fingerprintPassed || otpVerified || checkoutIdentityVerified,
-  verifiedByOtp: otpVerified,
+
+  // Once checkout fingerprint succeeds, remain in checkout
+  // verification mode until checkout is completed.
+  checkoutMode: checkoutSessionOpen || checkoutIdentityVerified,
+
+  verified: checkoutIdentityVerified ||
+      (!checkoutIdentityVerified &&
+          !checkoutSessionOpen &&
+          (fingerprintPassed || otpVerified)),
+
+  verifiedByOtp: !checkoutIdentityVerified &&
+      !checkoutSessionOpen &&
+      otpVerified,
+
   onFingerprint: onFingerprint,
 ),
 
@@ -1324,6 +1343,7 @@ class _IdentityVerificationCard extends StatelessWidget {
 const _IdentityVerificationCard({
 required this.snapshot,
 required this.sessionAvailable,
+required this.checkoutMode,
 required this.verified,
 required this.verifiedByOtp,
 required this.onFingerprint,
@@ -1331,9 +1351,12 @@ required this.onFingerprint,
 
 final AttendanceSecuritySnapshot? snapshot;
 final bool sessionAvailable;
+final bool checkoutMode;
 final bool verified;
 final bool verifiedByOtp;
-final Future<void> Function() onFingerprint;
+final Future<void> Function({
+  bool forCheckout,
+}) onFingerprint;
 
 @override
 Widget build(BuildContext context) {
@@ -1417,10 +1440,12 @@ return _GlassCard(
 
           // Do NOT open fingerprint again after verification.
           onPressed: securityReady && !verified
-              ? () async {
-                  await onFingerprint();
-                }
-              : null,
+          ? () async {
+          await onFingerprint(
+          forCheckout: checkoutMode,
+        );
+      }
+    : null,
 
           child: Icon(
   !sessionAvailable
@@ -1439,10 +1464,12 @@ return _GlassCard(
 
       FilledButton.icon(
         onPressed: securityReady && !verified
-            ? () async {
-                await onFingerprint();
-              }
-            : null,
+        ? () async {
+        await onFingerprint(
+          forCheckout: checkoutMode,
+        );
+      }
+    : null,
         icon: Icon(
           verified
               ? Icons.check_circle
