@@ -260,10 +260,16 @@ class _MainShellScreenState extends State<MainShellScreen>
   // ============================================
 
   if (!sessionExists) {
-    setState(() {
-      activeSession = null;
-      attendanceState = AttendanceFlowState.notCheckedIn;
-    });
+  setState(() {
+    activeSession = null;
+    attendanceState = AttendanceFlowState.notCheckedIn;
+
+    fingerprintPassed = false;
+    otpVerified = false;
+
+    // DO NOT CLEAR CHECKOUT VERIFICATION HERE
+    // Student may still need checkout after session ends.
+  });
 
     if (showSnack) {
       _snack(
@@ -304,6 +310,13 @@ class _MainShellScreenState extends State<MainShellScreen>
 
   return int.tryParse(raw?.toString() ?? '');
 }
+  bool get identitySessionAvailable {
+  return activeSession?['session_id'] != null &&
+      (
+        activeSession?['session_active'] == true ||
+        activeSession?['can_check_out'] == true
+      );
+}
 
   bool get hasActiveSession {
     return activeSessionId != null &&
@@ -324,11 +337,15 @@ class _MainShellScreenState extends State<MainShellScreen>
     return fingerprintPassed || otpVerified;
 }
   bool canCheckOut() {
-  if (!hasEndedCheckoutSession && !hasActiveSession) {
+  if (!hasOpenSessionForCheckout) {
     return false;
   }
 
-  if (attendanceState != AttendanceFlowState.checkedIn) {
+  final checkedIn =
+      activeSession?['checked_in'] == true ||
+      attendanceState == AttendanceFlowState.checkedIn;
+
+  if (!checkedIn) {
     return false;
   }
 
@@ -427,10 +444,9 @@ double? distanceFromClassroom;
       fingerprintPassed = true;
       otpVerified = false;
 
-      if (attendanceState == AttendanceFlowState.checkedIn &&
-          !hasActiveSession) {
+      if (attendanceState == AttendanceFlowState.checkedIn) {
         checkoutIdentityVerified = true;
-      }
+    }
     });
 
     _snack('Identity Verified Successfully');
@@ -757,7 +773,7 @@ if (!identityVerified) {
         stats: attendanceStats,
         securitySnapshot: securitySnapshot,
         activeSession: activeSession,
-        sessionAvailable: hasOpenSessionForCheckout,
+        sessionAvailable: identitySessionAvailable,
         checkoutSessionOpen: hasEndedCheckoutSession,
         attendanceState: attendanceState,
         fingerprintPassed: fingerprintPassed,
@@ -983,12 +999,8 @@ class HomeTab extends StatelessWidget {
           const SizedBox(height: 12),
         _IdentityVerificationCard(
   snapshot: securitySnapshot,
-  sessionAvailable: activeSession?['session_id'] != null &&
-      (activeSession?['session_active'] == true ||
-       activeSession?['can_check_out'] == true),
-  verified: checkoutSessionOpen
-      ? checkoutIdentityVerified
-      : (fingerprintPassed || otpVerified),
+  sessionAvailable: sessionAvailable,
+  verified: fingerprintPassed || otpVerified || checkoutIdentityVerified,
   verifiedByOtp: otpVerified,
   onFingerprint: onFingerprint,
 ),
@@ -1370,17 +1382,20 @@ return _GlassCard(
       ),
 
       _MetricRow(
-        label: 'Biometrics',
-        value: !sessionAvailable
-            ? 'Not required'
-            : verified
-                ? (verifiedByOtp
-                    ? 'OTP verified'
-                    : 'Fingerprint verified')
-                : 'Pending',
-        valueColor:
-            verified ? Colors.green : Colors.orange,
-      ),
+  label: 'Biometrics',
+  value: !sessionAvailable
+      ? 'Not required'
+      : verified
+          ? (verifiedByOtp
+              ? 'OTP verified'
+              : 'Fingerprint verified')
+          : 'Pending',
+  valueColor: !sessionAvailable
+      ? Colors.grey
+      : verified
+          ? Colors.green
+          : Colors.orange,
+),
 
       const SizedBox(height: 14),
 
@@ -1403,13 +1418,15 @@ return _GlassCard(
               : null,
 
           child: Icon(
-            verifiedByOtp
-                ? Icons.sms_outlined
-                : verified
-                    ? Icons.verified
-                    : Icons.fingerprint,
-            size: 64,
-          ),
+  !sessionAvailable
+      ? Icons.event_busy
+      : verifiedByOtp
+          ? Icons.sms_outlined
+          : verified
+              ? Icons.verified
+              : Icons.fingerprint,
+  size: 64,
+),
         ),
       ),
 
@@ -1427,10 +1444,12 @@ return _GlassCard(
               : Icons.fingerprint,
         ),
         label: Text(
-          verified
-              ? 'Identity Verified'
-              : 'Scan Fingerprint',
-        ),
+  !sessionAvailable
+      ? 'No Session Available'
+      : verified
+          ? 'Identity Verified'
+          : 'Scan Fingerprint',
+),
       ),
     ],
   ),
