@@ -1605,30 +1605,26 @@ def student_attendance_history(request):
 
 
     # ============================
-    # OVERALL ATTENDANCE
-    # ============================
+# OVERALL ATTENDANCE
+# ============================
 
-    total_sessions = Attendance.objects.filter(
-        student=student
-    ).count()
+    attendance_records = Attendance.objects.filter(
+      student=student
+)
 
-
-    attended_sessions = Attendance.objects.filter(
-        student=student,
-        status__in=[
-            "PRESENT",
-            "LATE",
-            "PARTIAL_ATTENDANCE"
-        ]
-    ).count()
-
+    total_sessions = attendance_records.count()
 
     overall_percentage = 0
 
     if total_sessions > 0:
-        overall_percentage = (
-            attended_sessions / total_sessions
-        ) * 100
+        total_percentage = sum(
+        float(record.attendance_percentage or 0)
+        for record in attendance_records
+    )
+
+    overall_percentage = (
+        total_percentage / total_sessions
+    )
 
 
 
@@ -1646,32 +1642,22 @@ def student_attendance_history(request):
 
     for subject in subjects:
 
+        subject_records = Attendance.objects.filter(
+        student=student,
+        session__subject=subject
+        )
 
-        total = Attendance.objects.filter(
-            student=student,
-            session__subject=subject
-        ).count()
+    total = subject_records.count()
 
+    percentage = 0
 
-        attended = Attendance.objects.filter(
-            student=student,
-            session__subject=subject,
-            status__in=[
-                "PRESENT",
-                "LATE",
-                "PARTIAL_ATTENDANCE"
-            ]
-        ).count()
+    if total > 0:
+        total_percentage = sum(
+            float(record.attendance_percentage or 0)
+            for record in subject_records
+        )
 
-
-
-        percentage = 0
-
-
-        if total > 0:
-            percentage = (
-                attended / total
-            ) * 100
+        percentage = total_percentage / total
 
 
 
@@ -1706,18 +1692,21 @@ def student_attendance_history(request):
 
         recent_attendance.append({
 
-            "subject":
-            record.session.subject.name,
+    "subject":
+    record.session.subject.name,
 
+    "date":
+    record.session.date,
 
-            "date":
-            record.session.date,
+    "status":
+    record.status,
 
+    "percentage":
+    float(record.attendance_percentage)
+    if record.check_out_time
+    else None
 
-            "status":
-            record.status
-
-        })
+})
 
 
 
