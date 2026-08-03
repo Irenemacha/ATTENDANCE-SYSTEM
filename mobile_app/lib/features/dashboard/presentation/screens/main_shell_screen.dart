@@ -8,6 +8,7 @@ import 'package:mobile_app/features/dashboard/data/dashboard_service.dart';
 import 'package:mobile_app/services/auth_service.dart';
 import 'package:mobile_app/features/notifications/presentation/notification_screen.dart';
 import 'package:mobile_app/features/attendance/presentation/screens/fingerprint_scan_screen.dart';
+import 'package:mobile_app/features/attendance/presentation/screens/attendance_history_screen.dart';
 
 const _primary = Color(0xFF2563EB);
 const _primaryDark = Color(0xFF0F172A);
@@ -789,12 +790,7 @@ if (!identityVerified) {
         onCheckOut: startCheckOut,
         
       ),
-      AttendanceTab(
-        onCheckIn: startCheckIn,
-        onCheckOut: startCheckOut,
-        canCheckIn: canCheckIn(),
-        canCheckOut: canCheckOut(),
-      ),
+      const AttendanceHistoryScreen(),
       const NotificationScreen(),
       ProfileTab(user: user, onRefresh: loadUser),
     ];

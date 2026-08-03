@@ -1,5 +1,6 @@
 from django.urls import path
 from .views import start_session
+
 from .views import (
     start_session,
     check_in,
@@ -10,7 +11,8 @@ from .views import (
     session_report,
     active_session,
     location_update,
-    notifications
+    notifications,
+    student_attendance_history
 )
 
 urlpatterns = [
@@ -26,6 +28,7 @@ urlpatterns = [
     path('check-out/', check_out, name='check_out'),
     path('active-session/', active_session, name='active_session'),
     path('location-update/', location_update, name='location-update'),
+    path('history/',student_attendance_history, name='student_attendance_history'),
 
     # Lecturer dashboard
     path('lecturer/dashboard/', lecturer_dashboard, name='lecturer_dashboard'),

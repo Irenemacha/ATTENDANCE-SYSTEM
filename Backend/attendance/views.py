@@ -5,6 +5,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from students.models import Student, Notification
+from django.db.models import Count, Q
 
 
 from students.serializers import NotificationSerializer
@@ -23,6 +24,7 @@ from courses.models import (
 
 from .models import AttendanceSession, Attendance, MovementLog
 from .utils import calculate_distance
+
 
 
 def is_within_geofence(distance, radius):
@@ -1625,6 +1627,152 @@ def location_update(request):
         "message": "Movement recorded",
         "inside_geofence": inside_geofence,
         "distance_meters": distance,
+    })
+    
+    
+@api_view(['GET'])
+def student_attendance_history(request):
+
+    user = request.user
+
+    student = Student.objects.get(
+        user=user
+    )
+
+
+    # ============================
+    # OVERALL ATTENDANCE
+    # ============================
+
+    total_sessions = Attendance.objects.filter(
+        student=student
+    ).count()
+
+
+    attended_sessions = Attendance.objects.filter(
+        student=student,
+        status__in=[
+            "PRESENT",
+            "LATE",
+            "PARTIAL_ATTENDANCE"
+        ]
+    ).count()
+
+
+    overall_percentage = 0
+
+    if total_sessions > 0:
+        overall_percentage = (
+            attended_sessions / total_sessions
+        ) * 100
+
+
+
+    # ============================
+    # SUBJECT PERFORMANCE
+    # ============================
+
+    subjects = Subject.objects.filter(
+        course=student.course
+    )
+
+
+    subject_performance = []
+
+
+    for subject in subjects:
+
+
+        total = Attendance.objects.filter(
+            student=student,
+            session__subject=subject
+        ).count()
+
+
+        attended = Attendance.objects.filter(
+            student=student,
+            session__subject=subject,
+            status__in=[
+                "PRESENT",
+                "LATE",
+                "PARTIAL_ATTENDANCE"
+            ]
+        ).count()
+
+
+
+        percentage = 0
+
+
+        if total > 0:
+            percentage = (
+                attended / total
+            ) * 100
+
+
+
+        subject_performance.append({
+
+            "subject": subject.name,
+
+            "percentage": round(
+                percentage,
+                2
+            )
+
+        })
+
+
+
+    # ============================
+    # RECENT ATTENDANCE
+    # ============================
+
+    recent = Attendance.objects.filter(
+        student=student
+    ).order_by(
+        "-check_in_time"
+    )[:10]
+
+
+    recent_attendance = []
+
+
+    for record in recent:
+
+        recent_attendance.append({
+
+            "subject":
+            record.session.subject.name,
+
+
+            "date":
+            record.session.date,
+
+
+            "status":
+            record.status
+
+        })
+
+
+
+    return Response({
+
+        "overall_percentage":
+        round(
+            overall_percentage,
+            2
+        ),
+
+
+        "subjects":
+        subject_performance,
+
+
+        "recent":
+        recent_attendance
+
     })
     
 @api_view(["GET"])
