@@ -9,30 +9,6 @@ from courses.models import Course, LecturerCourse, StudentCourse, Timetable, Sub
 
 User = get_user_model()
 
-
-@api_view(["GET", "POST"])
-@permission_classes([IsAdminOrStaff])
-def course_list_create(request):
-    if request.method == "GET":
-        courses = Course.objects.select_related("department").all()
-        return Response([
-            {
-                "id": course.id,
-                "name": course.name,
-                "code": course.code,
-                "department": course.department.name,
-            }
-            for course in courses
-        ])
-
-    course = Course.objects.create(
-        name=request.data.get("name"),
-        code=request.data.get("code"),
-        department_id=request.data.get("department_id"),
-    )
-    return Response({"message": "Course created", "id": course.id}, status=201)
-
-
 @api_view(["POST"])
 @permission_classes([IsAdminOrStaff])
 def assign_student_to_course(request):
@@ -100,6 +76,39 @@ def lecturer_courses(request):
         }
         for course in courses
     ])
+    
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def course_list(request):
+    courses = Course.objects.select_related("department").all()
+
+    return Response([
+        {
+            "id": course.id,
+            "name": course.name,
+            "code": course.code,
+            "department": course.department.name,
+        }
+        for course in courses
+    ])
+
+
+@api_view(["POST"])
+@permission_classes([IsAdminOrStaff])
+def course_create(request):
+    course = Course.objects.create(
+        name=request.data.get("name"),
+        code=request.data.get("code"),
+        department_id=request.data.get("department_id"),
+    )
+
+    return Response(
+        {
+            "message": "Course created",
+            "id": course.id
+        },
+        status=201
+    )
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
