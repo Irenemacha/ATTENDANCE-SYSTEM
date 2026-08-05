@@ -3,8 +3,8 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Attendance Admin",
-  description: "Attendance system administration dashboard",
+  title: "Attendance System",
+  description: "Attendance management dashboard",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {

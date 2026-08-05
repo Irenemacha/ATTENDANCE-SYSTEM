@@ -29,4 +29,5 @@ urlpatterns = [
     path("api-auth/", include("rest_framework.urls"), name="rest_framework"),
     path("swagger/", schema_view.with_ui("swagger", cache_timeout=0), name="swagger-ui"),
     path("redoc/", schema_view.with_ui("redoc", cache_timeout=0), name="redoc"),
+    path('dashboard/', include('dashboard.urls')),
 ]

@@ -7,10 +7,12 @@ import { ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { api, saveSession, User } from "@/lib/api";
+import { api, getRoleHomePath, saveSession, User } from "@/lib/api";
+import { useAuthStore } from "@/lib/store";
 
 export default function LoginPage() {
   const router = useRouter();
+  const login = useAuthStore((s) => s.login);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -25,12 +27,22 @@ export default function LoginPage() {
         username,
         password,
       });
-      if (!response.data.user.is_staff && !response.data.user.is_superuser) {
-        setError("Only staff users can access the admin dashboard.");
+      const user = response.data.user;
+      const groups = user.groups.map((g) => g.toLowerCase());
+
+      if (groups.includes("lecturer") || groups.includes("hod")) {
+        login(response.data.access, response.data.refresh, user);
+        router.replace(getRoleHomePath(user));
         return;
       }
-      saveSession(response.data.access, response.data.refresh, response.data.user);
-      router.replace("/dashboard");
+
+      if (!user.is_staff && !user.is_superuser) {
+        setError("Access denied. Contact an administrator.");
+        return;
+      }
+
+      login(response.data.access, response.data.refresh, user);
+      router.replace(getRoleHomePath(user));
     } catch {
       setError("Invalid username or password.");
     } finally {
@@ -45,8 +57,8 @@ export default function LoginPage() {
           <div className="mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-primary text-primary-foreground">
             <ShieldCheck className="h-7 w-7" />
           </div>
-          <CardTitle className="text-2xl">Admin Login</CardTitle>
-          <p className="text-sm text-muted-foreground">Staff and superusers only</p>
+          <CardTitle className="text-2xl">Attendance System</CardTitle>
+          <p className="text-sm text-muted-foreground">Sign in to your dashboard</p>
         </CardHeader>
         <CardContent>
           <form className="grid gap-4" onSubmit={submit}>

@@ -2,31 +2,96 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, FileSpreadsheet, Shield, UserCircle, Users } from "lucide-react";
+import {
+  BarChart3,
+  Building2,
+  GraduationCap,
+  MapPin,
+  BookOpen,
+  UserSquare2,
+  Users,
+  Shield,
+  FileSpreadsheet,
+  UserCircle,
+  PlayCircle,
+  History,
+  Clock,
+  LineChart,
+  AlertTriangle,
+  Download,
+  Upload,
+  UserRound,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-const groups = [
+type SidebarProps = {
+  role: "admin" | "lecturer" | "hod";
+  open: boolean;
+  onNavigate?: () => void;
+};
+
+const adminLinks = [
+  { title: "Overview", items: [{ href: "/admin", label: "Dashboard", icon: BarChart3 }] },
   {
-    title: "Overview",
-    items: [{ href: "/dashboard", label: "Dashboard", icon: BarChart3 }],
-  },
-  {
-    title: "Administration",
+    title: "Management",
     items: [
-      { href: "/users", label: "Users", icon: Users },
-      { href: "/groups", label: "Groups", icon: Shield },
-      { href: "/users/import", label: "Import Users", icon: FileSpreadsheet },
+      { href: "/admin/users", label: "Users", icon: Users },
+      { href: "/admin/groups", label: "Groups", icon: Shield },
+      { href: "/admin/departments", label: "Departments", icon: Building2 },
+      { href: "/admin/courses", label: "Courses", icon: BookOpen },
+      { href: "/admin/classrooms", label: "Classrooms", icon: MapPin },
+      { href: "/admin/lecturers", label: "Lecturers", icon: UserRound },
     ],
   },
   {
-    title: "Account",
-    items: [{ href: "/profile", label: "Profile", icon: UserCircle }],
+    title: "Tools",
+    items: [{ href: "/admin/users/import", label: "Import Users", icon: FileSpreadsheet }],
   },
+  { title: "Account", items: [{ href: "/admin/profile", label: "Profile", icon: UserCircle }] },
 ];
 
-export function Sidebar({ open, onNavigate }: { open: boolean; onNavigate?: () => void }) {
+const lecturerLinks = [
+  { title: "Overview", items: [{ href: "/lecturer", label: "Dashboard", icon: BarChart3 }] },
+  {
+    title: "Sessions",
+    items: [
+      { href: "/lecturer/sessions", label: "My Sessions", icon: Clock },
+      { href: "/lecturer/start", label: "Start Session", icon: PlayCircle },
+      { href: "/lecturer/history", label: "History", icon: History },
+    ],
+  },
+  { title: "Account", items: [{ href: "/lecturer/profile", label: "Profile", icon: UserCircle }] },
+];
+
+const hodLinks = [
+  { title: "Overview", items: [{ href: "/hod", label: "Dashboard", icon: BarChart3 }] },
+  {
+    title: "Reports",
+    items: [
+      { href: "/hod/reports", label: "Session Reports", icon: LineChart },
+      { href: "/hod/compliance", label: "Compliance", icon: AlertTriangle },
+    ],
+  },
+  {
+    title: "Export",
+    items: [
+      { href: "/hod/export", label: "Download Reports", icon: Download },
+      { href: "/hod/upload", label: "Upload Ledger", icon: Upload },
+    ],
+  },
+  { title: "Account", items: [{ href: "/hod/profile", label: "Profile", icon: UserCircle }] },
+];
+
+const roleMap = {
+  admin: { label: "Admin Console", links: adminLinks },
+  lecturer: { label: "Lecturer Dashboard", links: lecturerLinks },
+  hod: { label: "HOD Dashboard", links: hodLinks },
+};
+
+export function Sidebar({ role, open, onNavigate }: SidebarProps) {
   const pathname = usePathname();
+  const config = roleMap[role];
 
   return (
     <aside
@@ -39,11 +104,11 @@ export function Sidebar({ open, onNavigate }: { open: boolean; onNavigate?: () =
         <div className="grid h-10 w-10 place-items-center rounded-xl bg-primary text-lg font-bold text-primary-foreground">A</div>
         <div>
           <p className="font-semibold">Attendance System</p>
-          <p className="text-xs text-muted-foreground">Admin Console</p>
+          <p className="text-xs text-muted-foreground">{config.label}</p>
         </div>
       </div>
       <nav className="space-y-6 p-4">
-        {groups.map((group) => (
+        {config.links.map((group) => (
           <div key={group.title}>
             <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{group.title}</p>
             <div className="space-y-1">

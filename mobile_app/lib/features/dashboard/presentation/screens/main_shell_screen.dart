@@ -647,7 +647,7 @@ double? distanceFromClassroom;
 }
 
 class HomeTab extends StatelessWidget {
-  HomeTab({
+  const HomeTab({
     super.key,
     required this.user,
     required this.stats,

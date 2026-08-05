@@ -27,6 +27,7 @@ INSTALLED_APPS = [
     "students",
     "attendance",
     "accounts.apps.AccountsConfig",
+    "dashboard", 
 ]
 
 MIDDLEWARE = [

@@ -7,31 +7,37 @@ import { LoadingSkeleton } from "@/components/loading-skeleton";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
 import { api, clearSession, getStoredUser, User } from "@/lib/api";
+import { useAuthStore } from "@/lib/store";
 
 export function AdminShell({ children }: { children: ReactNode }) {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(getStoredUser());
+  const { user, setUser, logout } = useAuthStore();
   const [ready, setReady] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
+    const stored = getStoredUser();
+    if (!stored) {
+      router.replace("/login");
+      return;
+    }
     api
       .get<User>("/auth/me/")
       .then((response) => {
-        if (!response.data.is_staff && !response.data.is_superuser) {
+        const u = response.data;
+        if (!u.is_staff && !u.is_superuser && !u.groups.some((g) => g.toLowerCase() === "hod" || g.toLowerCase() === "lecturer")) {
           clearSession();
           router.replace("/login");
           return;
         }
-        localStorage.setItem("user", JSON.stringify(response.data));
-        setUser(response.data);
+        setUser(u);
         setReady(true);
       })
       .catch(() => {
         clearSession();
         router.replace("/login");
       });
-  }, [router]);
+  }, [router, setUser]);
 
   if (!ready) {
     return (
@@ -55,7 +61,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-slate-50 lg:grid lg:grid-cols-[288px_1fr]">
       {sidebarOpen && <button className="fixed inset-0 z-30 bg-black/30 lg:hidden" onClick={() => setSidebarOpen(false)} aria-label="Close navigation" />}
-      <Sidebar open={sidebarOpen} onNavigate={() => setSidebarOpen(false)} />
+      <Sidebar role="admin" open={sidebarOpen} onNavigate={() => setSidebarOpen(false)} />
       <div className="min-w-0">
         <Topbar user={user} onMenu={() => setSidebarOpen(true)} />
         <main className="p-4 sm:p-6 lg:p-8">{children}</main>
