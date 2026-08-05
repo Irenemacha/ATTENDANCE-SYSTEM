@@ -115,10 +115,27 @@ def course_create(request):
 def subject_list(request):
     course_id = request.query_params.get("course_id")
 
-    subjects = Subject.objects.all()
+    if not course_id:
+        return Response(
+            {"detail": "course_id is required."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
-    if course_id:
-        subjects = subjects.filter(course_id=course_id)
+    # Make sure the lecturer is assigned to this course
+    lecturer_course = LecturerCourse.objects.filter(
+        lecturer=request.user,
+        course_id=course_id
+    ).first()
+
+    if not lecturer_course:
+        return Response(
+            {"detail": "You are not assigned to this course."},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    subjects = Subject.objects.filter(
+        course_id=course_id
+    )
 
     return Response([
         {
