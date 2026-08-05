@@ -1753,8 +1753,15 @@ def notifications(request):
     ).order_by("-created_at")
 
     serializer = NotificationSerializer(
-        notification_list,
-        many=True
-    )
+    notification_list,
+    many=True
+)
 
-    return Response(serializer.data)
+    unread_count = notification_list.filter(
+    is_read=False
+    ).count()
+
+    return Response({
+    "unread_count": unread_count,
+    "notifications": serializer.data,
+})

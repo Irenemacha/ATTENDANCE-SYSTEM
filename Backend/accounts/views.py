@@ -649,12 +649,21 @@ def notifications(request):
         student=student
     ).order_by("-created_at")
 
-    return Response([
-        {
-            "title": n.title,
-            "message": n.message,
-            "read": n.is_read,
-            "date": n.created_at
-        }
-        for n in notifications
-    ])
+    unread_count = notifications.filter(
+        is_read=False
+    ).count()
+
+    return Response({
+        "unread_count": unread_count,
+
+        "notifications": [
+            {
+                "id": n.id,
+                "title": n.title,
+                "message": n.message,
+                "is_read": n.is_read,
+                "created_at": n.created_at,
+            }
+            for n in notifications
+        ]
+    })
