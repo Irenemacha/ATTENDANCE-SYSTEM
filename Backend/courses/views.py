@@ -2,9 +2,10 @@ from django.contrib.auth import get_user_model
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 
 from accounts.permissions import IsAdminOrStaff
-from courses.models import Course, LecturerCourse, StudentCourse, Timetable
+from courses.models import Course, LecturerCourse, StudentCourse, Timetable, Subject,LecturerSubject,Classroom
 
 User = get_user_model()
 
@@ -80,3 +81,59 @@ def create_timetable(request):
         room=request.data["room"],
     )
     return Response({"message": "Timetable created"}, status=201)
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def lecturer_courses(request):
+    course_ids = LecturerCourse.objects.filter(
+        lecturer=request.user
+    ).values_list("course_id", flat=True)
+
+    courses = Course.objects.filter(
+        id__in=course_ids
+    )
+
+    return Response([
+        {
+            "id": course.id,
+            "name": course.name,
+            "code": course.code,
+        }
+        for course in courses
+    ])
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def subject_list(request):
+    course_id = request.query_params.get("course_id")
+
+    subjects = Subject.objects.all()
+
+    if course_id:
+        subjects = subjects.filter(course_id=course_id)
+
+    return Response([
+        {
+            "id": subject.id,
+            "name": subject.name,
+            "code": subject.code,
+            "course_id": subject.course_id,
+        }
+        for subject in subjects
+    ])
+    
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def classroom_list(request):
+    classrooms = Classroom.objects.all()
+
+    return Response([
+        {
+            "id": classroom.id,
+            "room_name": classroom.room_name,
+            "room_number": classroom.room_number,
+            "latitude": classroom.latitude,
+            "longitude": classroom.longitude,
+            "radius_meters": classroom.radius_meters,
+        }
+        for classroom in classrooms
+    ])
