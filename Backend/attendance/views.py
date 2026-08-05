@@ -1057,6 +1057,8 @@ def session_report(request, session_id):
 @api_view(["GET"])
 @permission_classes([IsStudent])
 def active_session(request):
+    
+    auto_close_expired_sessions()
 
     try:
         student = request.user.student
@@ -1700,6 +1702,8 @@ def student_attendance_history(request):
 
     "status":
     record.status,
+    "check_in_time": record.check_in_time,
+    "check_out_time": record.check_out_time,
 
     "percentage":
     float(record.attendance_percentage)
