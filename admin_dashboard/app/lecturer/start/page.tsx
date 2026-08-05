@@ -28,6 +28,8 @@ export default function StartSessionPage() {
   const [selectedSubject, setSelectedSubject] = useState<number | "">("");
   const [selectedClassroom, setSelectedClassroom] = useState<number | "">("");
   const [radius, setRadius] = useState("30");
+  const [isOverride, setIsOverride] = useState(false);
+  const [overrideReason, setOverrideReason] = useState("");
 
   useEffect(() => {
     Promise.all([
@@ -42,9 +44,9 @@ export default function StartSessionPage() {
 
   useEffect(() => {
     if (selectedCourse) {
-      api.get(`/courses/${selectedCourse}/`).then((res) => {
-        const course = res.data as Course;
-        setSubjects(course.subjects ?? []);
+      api.get(`/subjects/?course_id=${selectedCourse}`).then((res) => {
+        const data = Array.isArray(res.data) ? res.data : (res.data as any)?.results ?? [];
+        setSubjects(data as { id: number; name: string }[]);
       }).catch(() => setSubjects([]));
     } else {
       setSubjects([]);
@@ -68,17 +70,23 @@ export default function StartSessionPage() {
     setError("");
     try {
       const cr = classrooms.find((c) => c.id === selectedClassroom);
-      await api.post("/attendance/start-session/", {
+      const payload: Record<string, unknown> = {
         course_id: selectedCourse,
         subject_id: selectedSubject,
         classroom_id: selectedClassroom,
         latitude: cr?.latitude,
         longitude: cr?.longitude,
         radius: parseFloat(radius) || 30,
-      });
+      };
+      if (isOverride) {
+        payload.is_override = true;
+        payload.override_reason = overrideReason;
+      }
+      await api.post("/attendance/start-session/", payload);
       router.push("/lecturer/sessions");
-    } catch {
-      setError("Failed to start session. Check your inputs.");
+    } catch (err: any) {
+      const backendMsg = err?.response?.data?.error || err?.response?.data?.detail;
+      setError(backendMsg || "Failed to start session. Check your inputs.");
     } finally {
       setStarting(false);
     }
@@ -140,6 +148,25 @@ export default function StartSessionPage() {
               <div className="grid gap-2">
                 <label className="text-sm font-medium">Geofence Radius (meters)</label>
                 <Input type="number" value={radius} onChange={(e) => setRadius(e.target.value)} min={5} />
+              </div>
+
+              <div className="grid gap-2 rounded-lg border p-3">
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <input
+                    type="checkbox"
+                    checked={isOverride}
+                    onChange={(e) => setIsOverride(e.target.checked)}
+                    className="h-4 w-4"
+                  />
+                  No timetable for this slot (override)
+                </label>
+                {isOverride && (
+                  <Input
+                    placeholder="Reason (e.g. postponed/replacement class)"
+                    value={overrideReason}
+                    onChange={(e) => setOverrideReason(e.target.value)}
+                  />
+                )}
               </div>
 
               {selectedClassroomData && (
