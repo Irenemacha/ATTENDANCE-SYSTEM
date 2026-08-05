@@ -401,66 +401,42 @@ class _AttendanceHistoryScreenState
 
 
                     return ListTile(
+  title: Text(
+    attendance['subject'].toString(),
+  ),
 
+  subtitle: Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        attendance['date'].toString(),
+      ),
 
-                      title:
-                          Text(
+      const SizedBox(height: 4),
 
-                            attendance['subject']
-                                .toString(),
+      Text(
+        "Check-in: ${formatTime(attendance['check_in_time'])}",
+      ),
 
-                          ),
+      Text(
+        "Check-out: ${formatTime(attendance['check_out_time'])}",
+      ),
+    ],
+  ),
 
+  trailing: Text(
+    status,
+    style: TextStyle(
+      fontWeight: FontWeight.bold,
 
-
-                      subtitle:
-                          Text(
-
-                            attendance['date']
-                                .toString(),
-
-                          ),
-
-
-
-                      trailing:
-                          Text(
-
-                            status,
-
-                            style:
-                                TextStyle(
-
-                              fontWeight:
-                                  FontWeight.bold,
-
-
-                              color:
-
-                              status ==
-                                  "PRESENT"
-
-                                  ? Colors.green
-
-
-                                  :
-
-                              status ==
-                                  "LATE"
-
-                                  ? Colors.orange
-
-
-                                  :
-
-                              Colors.red,
-
-                            ),
-
-                          ),
-
-
-                    );
+      color: status == "PRESENT"
+          ? Colors.green
+          : status == "LATE"
+              ? Colors.orange
+              : Colors.red,
+    ),
+  ),
+);
 
 
                   },
@@ -484,4 +460,26 @@ class _AttendanceHistoryScreenState
 
   }
 
+}
+
+     String formatTime(dynamic value) {
+  if (value == null) {
+    return '-';
+  }
+
+  final dateTime = DateTime.tryParse(
+    value.toString(),
+  );
+
+  if (dateTime == null) {
+    return '-';
+  }
+
+  final hour =
+      dateTime.hour.toString().padLeft(2, '0');
+
+  final minute =
+      dateTime.minute.toString().padLeft(2, '0');
+
+  return '$hour:$minute';
 }

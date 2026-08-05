@@ -4,14 +4,16 @@ import 'package:mobile_app/core/storage/storage_service.dart';
 
 
 class NotificationScreen extends StatefulWidget {
+  final VoidCallback? onNotificationsRead;
 
-  const NotificationScreen({super.key});
-
+  const NotificationScreen({
+    super.key,
+    this.onNotificationsRead,
+  });
 
   @override
   State<NotificationScreen> createState() =>
       _NotificationScreenState();
-
 }
 
 
@@ -28,20 +30,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   @override
 void initState() {
-
   super.initState();
-
-  initializeNotifications();
-
-}
-
-
-Future<void> initializeNotifications() async {
-
-  await markAllRead();
-
   loadNotifications();
-
 }
 
   Future<void> markAllRead() async {
@@ -85,26 +75,32 @@ Future<void> initializeNotifications() async {
   if (!mounted) return;
 
 
-  if(result["success"] == true){
+  if (result["success"] == true) {
+  final data = result["data"] as Map<String, dynamic>;
 
-    final data = result["data"] as Map<String,dynamic>;
+  setState(() {
+    unreadCount = data["unread_count"] ?? 0;
 
+    notifications =
+        List<dynamic>.from(
+          data["notifications"] ?? [],
+        );
 
-    setState(() {
+    isLoading = false;
+  });
 
-      unreadCount = data["unread_count"] ?? 0;
+  // Mark notifications as read AFTER they have been loaded/displayed.
+  await markAllRead();
 
-      notifications =
-          List<dynamic>.from(
-            data["notifications"] ?? []
-          );
+if (!mounted) return;
 
-      isLoading = false;
+setState(() {
+  unreadCount = 0;
+});
 
-    });
+widget.onNotificationsRead?.call();
 
-
-  } else {
+} else {
 
     setState(() {
       isLoading = false;

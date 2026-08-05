@@ -26,6 +26,7 @@ class MainShellScreen extends StatefulWidget {
 class _MainShellScreenState extends State<MainShellScreen>
     with WidgetsBindingObserver {
   int currentIndex = 0;
+  int unreadNotificationCount = 0;
   bool isLoading = true;
   bool isSecurityLoading = false;
   bool _securityEvaluationRunning = false;
@@ -110,6 +111,11 @@ class _MainShellScreenState extends State<MainShellScreen>
     print("STEP 8: loadAttendanceStats finished");
 
     print("STEP 9: setting isLoading false");
+
+    print("STEP 9: loading unread notifications");
+    await loadUnreadNotificationCount();
+  
+    
 
     if (mounted) {
     setState(() => isLoading = false);
@@ -703,6 +709,30 @@ if (!identityVerified) {
     );
   }
 }
+
+
+  Future<void> loadUnreadNotificationCount() async {
+  final token = await StorageService.getAccessToken();
+
+  if (token == null) return;
+
+  final result = await dashboardService.getNotifications(token);
+
+  if (!mounted) return;
+
+  if (result['success'] == true) {
+    final data = Map<String, dynamic>.from(
+      result['data'] ?? {},
+    );
+
+    setState(() {
+      unreadNotificationCount =
+          data['unread_count'] ?? 0;
+    });
+  }
+}
+
+
   Future<void> showSecurityDialog({required bool forCheckout}) async {
     final missing = missingSecuritySteps(forCheckout: forCheckout);
     await showDialog<void>(
@@ -796,7 +826,15 @@ if (!identityVerified) {
         
       ),
       const AttendanceHistoryScreen(),
-      const NotificationScreen(),
+      NotificationScreen(
+      onNotificationsRead: () {
+    if (!mounted) return;
+
+    setState(() {
+      unreadNotificationCount = 0;
+    });
+  },
+),
       ProfileTab(user: user, onRefresh: loadUser),
     ];
 
@@ -825,8 +863,12 @@ if (!identityVerified) {
         selectedItemColor: _primary,
         unselectedItemColor: const Color(0xFF6B7D78),
         type: BottomNavigationBarType.fixed,
-        onTap: (index) => setState(() => currentIndex = index),
-        items: const [
+        onTap: (index) {
+  setState(() {
+    currentIndex = index;
+  });
+},
+        items:[
           BottomNavigationBarItem(
             icon: Icon(Icons.home_outlined),
             label: 'Home',
@@ -836,9 +878,22 @@ if (!identityVerified) {
             label: 'Attendance',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.notifications_active_outlined),
-            label: 'Notifications',
+          icon: unreadNotificationCount > 0
+      ? Badge(
+          label: Text(
+            unreadNotificationCount > 99
+                ? '99+'
+                : unreadNotificationCount.toString(),
           ),
+          child: const Icon(
+            Icons.notifications_active_outlined,
+          ),
+        )
+      : const Icon(
+          Icons.notifications_active_outlined,
+        ),
+  label: 'Notifications',
+),
           BottomNavigationBarItem(
             icon: Icon(Icons.person_outline),
             label: 'Profile',
