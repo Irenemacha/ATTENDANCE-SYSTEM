@@ -264,3 +264,210 @@
  GET /admin/courses 200 in 1057ms
  GET /admin/courses 200 in 155ms
  GET /admin/lecturers 200 in 75ms
+ ✓ Compiled in 9.4s (451 modules)
+ ✓ Compiled in 1215ms (451 modules)
+ ○ Compiling /lecturer/start ...
+ ✓ Compiled /lecturer/start in 2.8s (655 modules)
+ GET /lecturer/start 200 in 11438ms
+ GET /admin/lecturers 200 in 9163ms
+ ○ Compiling /login ...
+ ✓ Compiled /login in 1257ms (662 modules)
+ GET /login 200 in 2322ms
+ GET /admin/lecturers 200 in 519ms
+ GET /login 200 in 198ms
+ ○ Compiling /lecturer ...
+ ✓ Compiled /lecturer in 1524ms (652 modules)
+ GET /lecturer 200 in 7621ms
+ ○ Compiling /admin ...
+ ✓ Compiled /admin in 863ms (654 modules)
+ GET /admin 200 in 1303ms
+ ○ Compiling /admin/dashboard ...
+ ✓ Compiled /admin/dashboard in 944ms (662 modules)
+ GET /admin/dashboard 200 in 1407ms
+ GET /admin/dashboard 200 in 104ms
+ GET /login 200 in 62ms
+ GET /lecturer 200 in 64ms
+ ○ Compiling /lecturer/sessions ...
+ ✓ Compiled /lecturer/sessions in 825ms (663 modules)
+ GET /lecturer/sessions 200 in 1499ms
+ GET /lecturer/sessions 200 in 62ms
+ ○ Compiling /lecturer/start ...
+ ✓ Compiled /lecturer/start in 2s (671 modules)
+ GET /lecturer/start 200 in 7546ms
+ ✓ Compiled in 3.5s (1099 modules)
+ GET /lecturer/start 200 in 830ms
+ ✓ Compiled in 1505ms (1099 modules)
+ GET /lecturer/start 200 in 502ms
+ ✓ Compiled in 1338ms (1099 modules)
+ GET /lecturer/start 200 in 308ms
+ GET /login 200 in 339ms
+ GET /lecturer/start 200 in 274ms
+ GET /login 200 in 50ms
+ ○ Compiling /lecturer ...
+ ✓ Compiled /lecturer in 923ms (660 modules)
+ GET /lecturer 200 in 1316ms
+ GET /lecturer/sessions 200 in 93ms
+ GET /lecturer/sessions 200 in 70ms
+ GET /lecturer/start 200 in 65ms
+ GET /lecturer/sessions 200 in 69ms
+ GET /login 200 in 80ms
+ GET /login 200 in 358ms
+ GET /login 200 in 121ms
+ GET /login 200 in 134ms
+ GET /login 200 in 128ms
+ GET /login 200 in 117ms
+ ○ Compiling /hod ...
+ ✓ Compiled /hod in 4.1s (1110 modules)
+ GET /hod 200 in 4795ms
+ GET /hod 200 in 61ms
+ GET /hod 200 in 71ms
+ ○ Compiling /hod/reports ...
+ ✓ Compiled /hod/reports in 3.6s (1059 modules)
+ GET /hod/reports 200 in 3929ms
+ GET /hod/reports 200 in 63ms
+ GET /hod 200 in 74ms
+ GET /login 200 in 64ms
+ ○ Compiling /admin ...
+ ✓ Compiled /admin in 928ms (604 modules)
+ GET /admin 200 in 1408ms
+ ✓ Compiled /admin/dashboard in 415ms (613 modules)
+ GET /admin/dashboard 200 in 658ms
+ GET /admin/dashboard 200 in 62ms
+ ○ Compiling /admin/groups ...
+ ✓ Compiled /admin/groups in 2.1s (601 modules)
+ GET /admin/groups 200 in 2679ms
+ GET /login 200 in 77ms
+ ○ Compiling /lecturer ...
+ ✓ Compiled /lecturer in 1670ms (596 modules)
+ GET /lecturer 200 in 2119ms
+ ✓ Compiled /lecturer/sessions in 447ms (604 modules)
+ GET /lecturer 200 in 1012ms
+ GET /lecturer/sessions 200 in 1207ms
+ GET /lecturer/sessions 200 in 94ms
+ GET /lecturer/sessions 200 in 86ms
+ GET /lecturer/sessions 200 in 111ms
+ ○ Compiling /lecturer/history ...
+ ✓ Compiled /lecturer/history in 2.6s (592 modules)
+ GET /lecturer/history 200 in 3414ms
+ ○ Compiling /lecturer/start ...
+ ✓ Compiled /lecturer/start in 1709ms (601 modules)
+ GET /lecturer/start 200 in 2234ms
+ GET /lecturer/history 200 in 54ms
+ ○ Compiling /lecturer/profile ...
+ ✓ Compiled /lecturer/profile in 4.2s (1059 modules)
+ GET /lecturer/profile 200 in 4516ms
+ GET /lecturer/profile 200 in 53ms
+ GET /lecturer/profile 200 in 74ms
+ GET /lecturer/profile 200 in 60ms
+ GET /lecturer/profile 200 in 65ms
+ GET /lecturer/profile 200 in 57ms
+ GET /lecturer/history 200 in 64ms
+ ○ Compiling /login ...
+ ✓ Compiled /login in 3s (597 modules)
+ GET /login 200 in 4157ms
+ ○ Compiling /admin ...
+ ✓ Compiled /admin in 2.7s (600 modules)
+ GET /admin 200 in 7922ms
+ GET /admin 200 in 74ms
+ GET /admin 200 in 62ms
+ ○ Compiling /admin/dashboard ...
+ ✓ Compiled /admin/dashboard in 607ms (610 modules)
+ GET /admin/dashboard 200 in 1361ms
+ GET /admin/dashboard 200 in 55ms
+ ○ Compiling /admin/users ...
+ ✓ Compiled /admin/users in 2.4s (668 modules)
+ GET /admin/users 200 in 5982ms
+ GET /admin/users 200 in 1744ms
+ GET /admin/users 200 in 171ms
+ GET /admin/users 200 in 153ms
+ GET /admin/users 200 in 110ms
+ ○ Compiling /admin/groups ...
+ ✓ Compiled /admin/groups in 1996ms (669 modules)
+ GET /admin/groups 200 in 2828ms
+ ○ Compiling /admin/departments ...
+ ✓ Compiled /admin/departments in 3.2s (648 modules)
+ GET /admin/departments 200 in 4002ms
+ GET /admin/departments 200 in 99ms
+ GET /admin/departments 200 in 84ms
+ ○ Compiling /admin/courses ...
+ ✓ Compiled /admin/courses in 1331ms (648 modules)
+ GET /admin/courses 200 in 1603ms
+ ○ Compiling /admin/classrooms ...
+ ✓ Compiled /admin/classrooms in 1290ms (648 modules)
+ GET /admin/classrooms 200 in 1546ms
+ ○ Compiling /admin/lecturers ...
+ ✓ Compiled /admin/lecturers in 1466ms (646 modules)
+ GET /admin/lecturers 200 in 1845ms
+ ✓ Compiled /login in 481ms (646 modules)
+ GET /login 200 in 654ms
+ ○ Compiling /lecturer ...
+ ✓ Compiled /lecturer in 1341ms (651 modules)
+ GET /lecturer 200 in 5659ms
+ GET /lecturer 200 in 52ms
+ ○ Compiling /lecturer/sessions ...
+ ✓ Compiled /lecturer/sessions in 1350ms (659 modules)
+ GET /lecturer/sessions 200 in 1933ms
+ GET /lecturer/sessions 200 in 53ms
+ GET /lecturer 200 in 67ms
+ GET /lecturer/sessions 200 in 77ms
+ GET /lecturer/sessions 200 in 86ms
+ ○ Compiling /lecturer/history ...
+ ✓ Compiled /lecturer/history in 3.9s (659 modules)
+ GET /lecturer/history 200 in 4791ms
+ GET /lecturer/history 200 in 61ms
+ GET /lecturer/history 200 in 51ms
+ ○ Compiling /lecturer/start ...
+ ✓ Compiled /lecturer/start in 5.2s (674 modules)
+ GET /lecturer/start 200 in 6574ms
+ GET /lecturer/start 200 in 104ms
+ GET /lecturer/start 200 in 62ms
+ GET /lecturer/sessions 200 in 87ms
+ GET /login 200 in 82ms
+ ○ Compiling /hod ...
+ ✓ Compiled /hod in 4.5s (654 modules)
+ GET /hod 200 in 9073ms
+ GET /hod 200 in 60ms
+ ○ Compiling /hod/export ...
+ ✓ Compiled /hod/export in 4.4s (1060 modules)
+ GET /hod/export 200 in 4865ms
+ ⨯ SyntaxError: Unexpected end of JSON input
+    at JSON.parse (<anonymous>) {
+  page: '/hod/export'
+}
+ ✓ Compiled in 1419ms (463 modules)
+ ○ Compiling /_error ...
+ ✓ Compiled /_error in 3.8s (1393 modules)
+ GET /hod/export 500 in 8783ms
+ GET /hod/export 200 in 209ms
+ GET /hod/export 200 in 55ms
+ GET /hod/export 200 in 61ms
+ GET /hod/export 200 in 637ms
+ ○ Compiling /hod/reports ...
+ ✓ Compiled /hod/reports in 559ms (798 modules)
+ GET /hod/reports 200 in 778ms
+ GET /hod 200 in 66ms
+ GET /hod/export 200 in 49ms
+ GET /login 200 in 80ms
+ ○ Compiling /admin ...
+ ✓ Compiled /admin in 2.9s (702 modules)
+ GET /admin 200 in 3307ms
+ ○ Compiling /admin/dashboard ...
+ ✓ Compiled /admin/dashboard in 3.2s (711 modules)
+ GET /admin/dashboard 200 in 3623ms
+ GET /admin/dashboard 200 in 55ms
+ GET /login 200 in 1001ms
+ ○ Compiling /lecturer ...
+ ✓ Compiled /lecturer in 2.9s (690 modules)
+ GET /lecturer 200 in 4603ms
+ GET /lecturer 200 in 50ms
+ ✓ Compiled /lecturer/sessions in 497ms (698 modules)
+ GET /lecturer/sessions 200 in 992ms
+ GET /lecturer/sessions 200 in 57ms
+ ⚠ Found a change in next.config.ts. Restarting the server to apply the changes...
+   ▲ Next.js 15.5.20
+   - Local:        http://localhost:3000
+   - Network:      http://172.16.20.127:3000
+   - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 13.2s
