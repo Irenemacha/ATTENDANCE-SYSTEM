@@ -473,3 +473,65 @@
  ✓ Ready in 13.2s
  ○ Compiling /login ...
  ✓ Compiled /login in 10.7s (780 modules)
+ GET /login 200 in 12361ms
+ GET /login 200 in 6797ms
+ ○ Compiling /lecturer ...
+ ✓ Compiled /lecturer in 901ms (793 modules)
+ GET /lecturer 200 in 1232ms
+ GET /lecturer 200 in 53ms
+ ○ Compiling /lecturer/sessions ...
+ ✓ Compiled /lecturer/sessions in 1532ms (901 modules)
+ GET /lecturer/sessions 200 in 1932ms
+ GET /lecturer/sessions 200 in 86ms
+ GET /login 200 in 68ms
+ ○ Compiling /admin ...
+ ✓ Compiled /admin in 772ms (903 modules)
+ GET /admin 200 in 1012ms
+ ○ Compiling /admin/dashboard ...
+ ✓ Compiled /admin/dashboard in 833ms (922 modules)
+ GET /admin/dashboard 200 in 1012ms
+ GET /admin/dashboard 200 in 62ms
+ ○ Compiling /admin/courses ...
+ ✓ Compiled /admin/courses in 2.6s (1049 modules)
+ GET /admin/courses 200 in 2845ms
+ ○ Compiling /admin/groups ...
+ ✓ Compiled /admin/groups in 1042ms (1058 modules)
+ GET /admin/groups 200 in 1247ms
+ ○ Compiling /admin/users ...
+ ✓ Compiled /admin/users in 2.1s (1059 modules)
+ GET /admin/users 200 in 2498ms
+ GET /admin/users 200 in 76ms
+ ○ Compiling /admin/departments ...
+ ✓ Compiled /admin/departments in 1140ms (1060 modules)
+ GET /admin/departments 200 in 1376ms
+ ○ Compiling /admin ...
+ ✓ Compiled /admin in 629ms (653 modules)
+ GET /admin 200 in 918ms
+ GET /admin/dashboard 200 in 83ms
+ GET /admin/dashboard 200 in 56ms
+ ○ Compiling /admin/profile ...
+ ✓ Compiled /admin/profile in 1086ms (1072 modules)
+ GET /admin/profile 200 in 1339ms
+ GET /admin/groups 200 in 88ms
+ GET /admin/groups 200 in 50ms
+ ○ Compiling /admin/lecturers ...
+ ✓ Compiled /admin/lecturers in 1084ms (1081 modules)
+ GET /admin/lecturers 200 in 1537ms
+ GET /admin/lecturers 200 in 120ms
+ GET /admin/courses 200 in 87ms
+ GET /admin/courses 200 in 52ms
+ ○ Compiling /admin/classrooms ...
+ ✓ Compiled /admin/classrooms in 1667ms (1072 modules)
+ GET /admin/classrooms 200 in 2088ms
+ GET /admin/classrooms 200 in 69ms
+ GET /admin/lecturers 200 in 80ms
+ GET /admin/lecturers 200 in 48ms
+ GET /admin/groups 200 in 79ms
+ GET /admin/groups 200 in 50ms
+ GET /admin/users 200 in 83ms
+ GET /admin/users 200 in 488ms
+ GET /admin/users 200 in 1568ms
+ ○ Compiling /login ...
+ ✓ Compiled /login in 4.3s (647 modules)
+ GET /login 200 in 5640ms
+ GET /login 200 in 5663ms
