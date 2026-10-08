@@ -9,3 +9,8 @@ npm-debug.log*
 npm-dev.log*
 dev.err
 dev.log
+dev-run.err
+dev-run.log
+dev-view.log
+dashboard.log
+dashboard_err.log

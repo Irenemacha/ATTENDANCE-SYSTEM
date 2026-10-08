@@ -1,7 +1,7 @@
 import axios from "axios";
 
 export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://attendance-system-production-21e3.up.railway.app/api/";
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://attendance-system-production-5479.up.railway.app/api";
 
 export type User = {
   id: number;
