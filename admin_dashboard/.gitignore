@@ -14,3 +14,5 @@ dev-run.log
 dev-view.log
 dashboard.log
 dashboard_err.log
+dev_new.log
+dev_prod.log
