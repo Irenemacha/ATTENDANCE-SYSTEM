@@ -1,0 +1,57 @@
+   ▲ Next.js 15.5.20
+   - Local:        http://127.0.0.1:3000
+   - Network:      http://127.0.0.1:3000
+   - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 4.7s
+ ○ Compiling /login ...
+ ✓ Compiled /login in 3.8s (766 modules)
+ GET /login 200 in 4860ms
+ GET /login 200 in 216ms
+ GET /login 200 in 325ms
+ GET /login 200 in 339ms
+ GET /login 200 in 275ms
+ GET /login 200 in 290ms
+ GET /login 200 in 207ms
+ ○ Compiling / ...
+ ✓ Compiled / in 4s (787 modules)
+ ✓ Compiled in 1043ms (307 modules)
+ GET / 200 in 501ms
+ GET / 200 in 709ms
+ GET /login 200 in 141ms
+ GET /login 200 in 94ms
+ ○ Compiling /admin ...
+ ✓ Compiled /admin in 2.1s (781 modules)
+ GET /admin 307 in 2932ms
+ ○ Compiling /admin/dashboard ...
+ ✓ Compiled /admin/dashboard in 2.3s (915 modules)
+ GET /admin/dashboard 200 in 3308ms
+ GET /login 200 in 287ms
+ GET /login 200 in 440ms
+ GET /login 200 in 350ms
+ ○ Compiling /lecturer ...
+ ✓ Compiled /lecturer in 2.6s (839 modules)
+ GET /lecturer 200 in 3602ms
+ ✓ Compiled in 1071ms (352 modules)
+ GET /lecturer 200 in 628ms
+ GET /lecturer 200 in 210ms
+ GET /lecturer 200 in 130ms
+ ○ Compiling /lecturer/sessions ...
+ ✓ Compiled /lecturer/sessions in 4.8s (932 modules)
+ GET /lecturer/sessions 200 in 6012ms
+ GET /lecturer/sessions 200 in 261ms
+ GET /lecturer 307 in 383ms
+ GET /lecturer/sessions 200 in 396ms
+ ○ Compiling /lecturer/start ...
+ ✓ Compiled /lecturer/start in 2.4s (964 modules)
+ GET /lecturer/start 200 in 2832ms
+ GET /lecturer/start 200 in 77ms
+ GET /lecturer/sessions 200 in 83ms
+ GET /lecturer/sessions 200 in 525ms
+ GET /lecturer/start 200 in 79ms
+ ○ Compiling /lecturer/students ...
+ ✓ Compiled /lecturer/students in 3.9s (979 modules)
+ GET /lecturer/students 200 in 4449ms
+ GET /lecturer/students 200 in 196ms
+ GET /login 200 in 101ms
