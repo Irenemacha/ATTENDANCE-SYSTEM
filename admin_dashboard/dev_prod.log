@@ -55,3 +55,7 @@
  GET /lecturer/students 200 in 4449ms
  GET /lecturer/students 200 in 196ms
  GET /login 200 in 101ms
+ GET /login 200 in 794ms
+ GET /lecturer 200 in 123ms
+ GET /lecturer/sessions 200 in 168ms
+ GET /lecturer/sessions 200 in 182ms
