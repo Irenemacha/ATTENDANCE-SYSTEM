@@ -16,13 +16,14 @@ export type User = {
   is_superuser: boolean;
   profile: {
     profile_type: string;
-    reg_number: string | null;
-    full_name: string;
-    email: string;
-    phone_number: string | null;
-    course: string | null;
+    reg_number?: string | null;
+    full_name?: string;
+    email?: string;
+    phone_number?: string | null;
+    course?: string | null;
     department: string | null;
-    year_of_study: number | null;
+    department_id?: number | null;
+    year_of_study?: number | null;
   };
 };
 
@@ -59,6 +60,43 @@ export type Subject = {
   name: string;
   code: string;
   course: number;
+  course_name?: string;
+  course_code?: string;
+};
+
+export type Enrollment = {
+  id: number;
+  student: number;
+  student_username: string;
+  student_name: string;
+  reg_number: string | null;
+  course: number;
+  course_name: string;
+  course_code: string;
+};
+
+export type AdminReportSession = {
+  session_id: number;
+  course: string;
+  course_code: string;
+  subject: string;
+  lecturer: string;
+  date: string;
+  active: boolean;
+  is_override: boolean;
+  total: number;
+  present: number;
+  late: number;
+  absent: number;
+  percentage: number;
+};
+
+export type AdminReportOverview = {
+  total_sessions: number;
+  active_sessions: number;
+  total_records: number;
+  total_present: number;
+  overall_percentage: number;
 };
 
 export type Classroom = {
@@ -68,6 +106,63 @@ export type Classroom = {
   latitude: number | null;
   longitude: number | null;
   radius_meters: number;
+};
+
+export type TimetableEntry = {
+  id: number;
+  course: number;
+  course_code: string;
+  course_name: string;
+  lecturer: number;
+  lecturer_username: string;
+  day: string;
+  start_time: string;
+  end_time: string;
+  room: string;
+};
+
+export type TimetableUploadSummary = {
+  message: string;
+  total_rows: number;
+  created_count: number;
+  updated_count: number;
+  skipped_count: number;
+  errors: Array<{ row: number | null; errors: string[] }>;
+};
+
+export type Holiday = {
+  id?: number;
+  name: string;
+  date: string;
+};
+
+export type Semester = {
+  id: number;
+  name: string;
+  academic_year: string;
+  start_date: string;
+  end_date: string;
+  teaching_weeks: number;
+  is_current: boolean;
+  holidays: Holiday[];
+};
+
+export type SessionChangeLog = {
+  id: number;
+  session_id: number;
+  course: string;
+  course_code: string;
+  subject: string;
+  lecturer: string;
+  change_type: string;
+  change_type_display: string;
+  original_start_time: string | null;
+  original_end_time: string | null;
+  actual_start_time: string | null;
+  actual_end_time: string | null;
+  reason: string | null;
+  changed_by: string;
+  changed_at: string;
 };
 
 export type SessionSummary = {
@@ -93,28 +188,98 @@ export type AttendanceRecord = {
 };
 
 export type HODDashboard = {
-  department: string;
+  department: string | null;
   total_sessions: number;
   active_sessions: number;
   total_attendance: number;
+  total_students?: number;
   low_attendance_alerts: Array<{
     session_id: number;
     course: string;
+    subject?: string;
     lecturer: string;
+    total_students?: number;
+    attended?: number;
     percentage: number;
   }>;
   delay_analysis: Array<{
+    session_id?: number;
+    course?: string;
+    subject?: string;
     lecturer: string;
-    late_starts: number;
-    average_delay_minutes: number;
+    issue?: string;
+    late_starts?: number;
+    average_delay_minutes?: number;
   }>;
   courses: Array<{
     course: string;
+    course_code?: string;
     total_sessions: number;
-    total_attendance: number;
-    present: number;
+    total_attendance?: number;
+    total_students?: number;
+    attended?: number;
+    present?: number;
     percentage: number;
   }>;
+};
+
+export type StudentAttendance = {
+  student_id: number;
+  name: string;
+  registration: string;
+  course: string | null;
+  course_code: string | null;
+  department?: string | null;
+  year_of_study?: number | null;
+  attended: number;
+  total_sessions: number;
+  percentage: number;
+  status: "Fine" | "Critical" | string;
+};
+
+export type StudentAttendanceSummary = {
+  total_students: number;
+  average_percentage: number;
+  critical_students?: number;
+  total_sessions?: number;
+};
+
+export type StudentAttendanceResponse = {
+  department?: string | null;
+  course?: string;
+  course_code?: string;
+  subject?: string | null;
+  subject_id?: number | null;
+  students: StudentAttendance[];
+  summary: StudentAttendanceSummary;
+};
+
+export type HODReportSession = {
+  session_id: number;
+  course: string;
+  course_code: string;
+  subject: string;
+  lecturer: string;
+  date: string;
+  active: boolean;
+  is_override: boolean;
+  total: number;
+  present: number;
+  late: number;
+  absent: number;
+  attended: number;
+  percentage: number;
+};
+
+export type HODReportResponse = {
+  department: string | null;
+  sessions: HODReportSession[];
+  overview?: {
+    total_sessions: number;
+    total_records: number;
+    total_attended: number;
+    overall_percentage: number;
+  };
 };
 
 export const api = axios.create({
@@ -141,10 +306,21 @@ function addRefreshSubscriber(cb: (token: string) => void) {
   refreshSubscribers.push(cb);
 }
 
+const AUTH_PATHS = ["/auth/login/", "/auth/refresh/"];
+
+function isAuthPath(url?: string) {
+  if (!url) return false;
+  const path = url.replace(API_BASE_URL, "");
+  return AUTH_PATHS.some((authPath) => path.includes(authPath));
+}
+
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+    if (isAuthPath(originalRequest?.url)) {
+      return Promise.reject(error);
+    }
     if (error.response?.status === 401 && !originalRequest._retry && typeof window !== "undefined") {
       const refreshToken = localStorage.getItem("refresh");
       if (!refreshToken) {

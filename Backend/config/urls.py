@@ -25,6 +25,7 @@ urlpatterns = [
     path("api/students/", include("students.urls"), name="students"),
     path("api/attendance/", include("attendance.urls"), name="attendance"),
     path("api/courses/", include("courses.urls"), name="courses"),
+    path("api/academics/", include("academics.urls"), name="academics"),
     path("api/departments/", include("departments.urls"), name="departments"),
     path("api-auth/", include("rest_framework.urls"), name="rest_framework"),
     path("swagger/", schema_view.with_ui("swagger", cache_timeout=0), name="swagger-ui"),

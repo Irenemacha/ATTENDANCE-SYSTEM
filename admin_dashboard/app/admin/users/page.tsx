@@ -12,7 +12,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Table, Td, Th } from "@/components/ui/table";
-import { api, Group, User } from "@/lib/api";
+import { api, Department, Group, User } from "@/lib/api";
 
 type UserForm = {
   username: string;
@@ -22,6 +22,7 @@ type UserForm = {
   last_name: string;
   is_staff: boolean;
   groups: string[];
+  department_id: number | "";
 };
 
 const emptyForm: UserForm = {
@@ -32,11 +33,13 @@ const emptyForm: UserForm = {
   last_name: "",
   is_staff: false,
   groups: [],
+  department_id: "",
 };
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [count, setCount] = useState(0);
@@ -49,6 +52,7 @@ export default function UsersPage() {
   useEffect(() => {
     load();
     api.get<Group[]>("/user-management/groups/").then((response) => setGroups(response.data));
+    api.get<Department[]>("/departments/").then((response) => setDepartments(response.data)).catch(() => setDepartments([]));
   }, [page, search]);
 
   async function load() {
@@ -78,6 +82,7 @@ export default function UsersPage() {
       last_name: user.last_name,
       is_staff: user.is_staff,
       groups: user.groups,
+      department_id: user.profile?.department_id ?? "",
     });
     setError("");
     setFormOpen(true);
@@ -87,12 +92,14 @@ export default function UsersPage() {
     event.preventDefault();
     setError("");
     try {
+      const departmentId: number | null = form.department_id === "" ? null : form.department_id;
+      const { department_id: _dept, ...base } = form;
+      const payload: Record<string, unknown> = { ...base, department_id: departmentId };
       if (editing) {
-        const payload = { ...form };
-        if (!payload.password) delete (payload as Partial<UserForm>).password;
+        if (!payload.password) delete payload.password;
         await api.patch(`/user-management/users/${editing.id}/`, payload);
       } else {
-        await api.post("/user-management/users/", form);
+        await api.post("/user-management/users/", payload);
       }
       setFormOpen(false);
       await load();
@@ -146,6 +153,7 @@ export default function UsersPage() {
                   <Th>Full name</Th>
                   <Th>Email</Th>
                   <Th>Groups</Th>
+                  <Th>Department</Th>
                   <Th>Staff</Th>
                   <Th>Actions</Th>
                 </tr>
@@ -161,6 +169,7 @@ export default function UsersPage() {
                         {user.groups.length ? user.groups.map((group) => <Badge key={group}>{group}</Badge>) : <Badge>not yet</Badge>}
                       </div>
                     </Td>
+                    <Td>{user.profile?.department ?? "-"}</Td>
                     <Td>{user.is_staff || user.is_superuser ? "Yes" : "No"}</Td>
                     <Td>
                       <div className="flex flex-wrap gap-2">
@@ -225,6 +234,21 @@ export default function UsersPage() {
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={form.is_staff} onChange={(event) => setForm({ ...form, is_staff: event.target.checked })} />
               Staff user
+            </label>
+            <label className="grid gap-1.5 text-sm">
+              <span className="text-muted-foreground">Department (HOD / Lecturer)</span>
+              <select
+                className="flex h-10 rounded-xl border bg-background px-3 text-sm"
+                value={form.department_id === "" ? "" : String(form.department_id)}
+                onChange={(event) =>
+                  setForm({ ...form, department_id: event.target.value === "" ? "" : Number(event.target.value) })
+                }
+              >
+                <option value="">No department</option>
+                {departments.map((d) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
             </label>
             <div className="flex flex-wrap gap-2">
               {groups.map((group) => (

@@ -4,6 +4,28 @@ from django.utils import timezone
 from datetime import timedelta
 
 # -------------------------
+# STAFF PROFILE (HOD / LECTURER)
+# -------------------------
+class StaffProfile(models.Model):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="staff_profile",
+    )
+    department = models.ForeignKey(
+        "courses.Department",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="staff_profiles",
+    )
+
+    def __str__(self):
+        dept = self.department.name if self.department_id else "no department"
+        return f"{self.user.username} - {dept}"
+
+
+# -------------------------
 # DEVICE MODEL
 # -------------------------
 class UserDevice(models.Model):

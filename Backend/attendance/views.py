@@ -9,10 +9,11 @@ from students.models import Notification
 from students.models import Student
 
 from accounts.models import UserSessionState
-from accounts.permissions import IsLecturer, IsStudent
+from accounts.permissions import IsLecturer, IsStudent, IsAdminOrStaff
 from accounts.services import advance_user_state
 
 from courses.models import (
+    Course,
     Subject,
     Timetable,
     LecturerCourse,
@@ -22,7 +23,14 @@ from courses.models import (
 
 from students.models import Student
 
-from .models import AttendanceSession, Attendance, MovementLog
+from .models import AttendanceSession, Attendance, MovementLog, SessionChangeLog
+from .services import (
+    attendance_status_label,
+    record_session_change,
+    session_attendance_summary,
+    student_attendance_stats,
+    timetable_window,
+)
 from .utils import calculate_distance
 
 
@@ -143,6 +151,57 @@ def start_session(request):
         status=400
     )
 
+    override_start = None
+    override_end = None
+
+    if is_override:
+
+        start_raw = request.data.get("start_time")
+        end_raw = request.data.get("end_time")
+
+        if bool(start_raw) != bool(end_raw):
+
+            return Response(
+                {
+                    "error": "Provide both start time and end time for an override"
+                },
+                status=400
+            )
+
+        if start_raw and end_raw:
+
+            try:
+                start_clock = datetime.strptime(str(start_raw), "%H:%M").time()
+                end_clock = datetime.strptime(str(end_raw), "%H:%M").time()
+
+            except ValueError:
+
+                return Response(
+                    {
+                        "error": "Invalid time format. Use HH:MM (24-hour)."
+                    },
+                    status=400
+                )
+
+            if end_clock <= start_clock:
+
+                return Response(
+                    {
+                        "error": "End time must be after start time"
+                    },
+                    status=400
+                )
+
+            session_date = timezone.localdate()
+
+            override_start = timezone.make_aware(
+                datetime.combine(session_date, start_clock)
+            )
+
+            override_end = timezone.make_aware(
+                datetime.combine(session_date, end_clock)
+            )
+
     # Fixed, explicit values for the current demo environment.
     allowed_wifi = "ARUSOPASUANET"
     
@@ -260,7 +319,38 @@ def start_session(request):
     override_reason=override_reason,
     override_duration_minutes=120
 )
-    
+
+    if override_start and override_end:
+
+        session.start_time = override_start
+
+        session.end_time = override_end
+
+        session.override_duration_minutes = int(
+            (override_end - override_start).total_seconds() // 60
+        )
+
+        session.save(
+            update_fields=[
+                "start_time",
+                "end_time",
+                "override_duration_minutes",
+            ]
+        )
+
+    original_start, original_end = timetable_window(session)
+
+    record_session_change(
+        session,
+        "OVERRIDE" if is_override else "START",
+        changed_by=user,
+        reason=override_reason or "",
+        original_start=original_start,
+        original_end=original_end,
+        actual_start=session.start_time,
+        actual_end=session.end_time,
+    )
+
     students = Student.objects.all()
 
     for student in students:
@@ -783,6 +873,19 @@ def end_session(request):
 
     session.save()
     
+    original_start, original_end = timetable_window(session)
+
+    record_session_change(
+        session,
+        "END",
+        changed_by=request.user,
+        reason="",
+        original_start=original_start,
+        original_end=original_end,
+        actual_start=session.start_time,
+        actual_end=session.end_time,
+    )
+
     open_records = Attendance.objects.filter(
     session=session,
     check_out_time__isnull=True
@@ -824,17 +927,6 @@ def end_session(request):
     students = Student.objects.filter(
     course=session.course
 )
-
-
-    Notification.objects.create(
-        student=student,
-        title="Session ended",
-        message=f"{session.subject.name} session has ended."
-    )
-
-    students = Student.objects.filter(
-        course=session.course
-    )
 
 
     # Create ABSENT records for students who never checked in
@@ -889,9 +981,6 @@ def lecturer_dashboard(request):
             session=session
         )
 
-
-        total = records.count()
-
         present = records.filter(
             status="PRESENT"
         ).count()
@@ -904,15 +993,9 @@ def lecturer_dashboard(request):
             status="ABSENT"
         ).count()
 
-
-
-        percentage = (
-
-            present / total * 100
-
-        ) if total else 0
-
-
+        # Percentage of students uses every student enrolled in the course as
+        # the denominator so it matches the mobile app and the HOD views.
+        total, attended, percentage = session_attendance_summary(session)
 
         data.append({
 
@@ -928,16 +1011,15 @@ def lecturer_dashboard(request):
 
             "total_students": total,
 
+            "attended": attended,
+
             "present": present,
 
             "late": late,
 
             "absent": absent,
 
-            "percentage": round(
-                percentage,
-                2
-            )
+            "percentage": percentage
 
         })
 
@@ -976,15 +1058,11 @@ def attendance_report(request):
             session=session
         )
 
-
-        total = records.count()
-
-
         present = records.filter(
             status="PRESENT"
         ).count()
 
-
+        total, attended, percentage = session_attendance_summary(session)
 
         result.append({
 
@@ -998,17 +1076,13 @@ def attendance_report(request):
 
             "present": present,
 
-            "absent":
-                records.filter(
-                    status="ABSENT"
-                ).count(),
+            "late": records.filter(status="LATE").count(),
 
-            "percentage":
-                round(
-                    (present / total) * 100,
-                    2
-                )
-                if total else 0
+            "attended": attended,
+
+            "absent": records.filter(status="ABSENT").count(),
+
+            "percentage": percentage
 
         })
 
@@ -1307,10 +1381,16 @@ def auto_close_expired_sessions():
 
         if session.is_override:
 
-            session_end = (
-                session.start_time +
-                timedelta(hours=2)
-            )
+            if session.end_time:
+
+                session_end = session.end_time
+
+            else:
+
+                session_end = (
+                    session.start_time +
+                    timedelta(minutes=session.override_duration_minutes or 120)
+                )
 
 
         # ==============================
@@ -1361,6 +1441,19 @@ def auto_close_expired_sessions():
             )
 
             session.save()
+
+            original_start, original_end = timetable_window(session)
+
+            record_session_change(
+                session,
+                "AUTO_CLOSE",
+                changed_by=None,
+                reason="Session automatically closed when its scheduled end time passed.",
+                original_start=original_start,
+                original_end=original_end,
+                actual_start=session.start_time,
+                actual_end=session.end_time,
+            )
 
 
             students = Student.objects.filter(
@@ -1481,3 +1574,283 @@ def location_update(request):
             "inside_geofence": inside_geofence
         }
     )
+
+
+# ======================================================
+# ADMIN ATTENDANCE REPORT (ALL SESSIONS)
+# ======================================================
+
+@api_view(["GET"])
+@permission_classes([IsAdminOrStaff])
+def admin_report(request):
+    sessions = AttendanceSession.objects.select_related(
+        "course", "subject", "lecturer"
+    ).order_by("-start_time")
+
+    course_id = request.query_params.get("course_id")
+    if course_id and str(course_id).isdigit():
+        sessions = sessions.filter(course_id=int(course_id))
+
+    lecturer_id = request.query_params.get("lecturer_id")
+    if lecturer_id and str(lecturer_id).isdigit():
+        sessions = sessions.filter(lecturer_id=int(lecturer_id))
+
+    day = request.query_params.get("day")
+    if day:
+        sessions = sessions.filter(date=day)
+
+    result = []
+    total_records = 0
+    total_present = 0
+
+    for session in sessions:
+        records = Attendance.objects.filter(session=session)
+
+        present = records.filter(status="PRESENT").count()
+        late = records.filter(status="LATE").count()
+        absent = records.filter(status="ABSENT").count()
+
+        # Enrolled students are the denominator, matching mobile and HOD views.
+        total, attended, percentage = session_attendance_summary(session)
+
+        total_records += total
+        total_present += attended
+
+        result.append({
+            "session_id": session.id,
+            "course": session.course.name,
+            "course_code": session.course.code,
+            "subject": session.subject.name,
+            "lecturer": session.lecturer.get_full_name() or session.lecturer.username,
+            "date": session.date,
+            "active": session.is_active,
+            "is_override": session.is_override,
+            "total": total,
+            "present": present,
+            "late": late,
+            "absent": absent,
+            "attended": attended,
+            "percentage": percentage,
+        })
+
+    overview = {
+        "total_sessions": len(result),
+        "active_sessions": sum(1 for item in result if item["active"]),
+        "total_records": total_records,
+        "total_present": total_present,
+        "overall_percentage": (
+            round((total_present / total_records) * 100, 2)
+            if total_records else 0
+        ),
+    }
+
+    return Response({
+        "overview": overview,
+        "sessions": result,
+    })
+
+
+# ======================================================
+# SESSION CHANGE HISTORY
+# ======================================================
+
+def change_log_to_dict(log):
+    session = log.session
+    return {
+        "id": log.id,
+        "session_id": session.id,
+        "course": session.course.name,
+        "course_code": session.course.code,
+        "subject": session.subject.name,
+        "lecturer": session.lecturer.get_full_name() or session.lecturer.username,
+        "change_type": log.change_type,
+        "change_type_display": log.get_change_type_display(),
+        "original_start_time": log.original_start_time,
+        "original_end_time": log.original_end_time,
+        "actual_start_time": log.actual_start_time,
+        "actual_end_time": log.actual_end_time,
+        "reason": log.reason,
+        "changed_by": (
+            log.changed_by.get_full_name() or log.changed_by.username
+        ) if log.changed_by else "System",
+        "changed_at": log.changed_at,
+    }
+
+
+def session_change_logs(request):
+    logs = SessionChangeLog.objects.select_related(
+        "session",
+        "session__course",
+        "session__subject",
+        "session__lecturer",
+        "changed_by",
+    )
+
+    session_id = request.query_params.get("session_id")
+    if session_id and str(session_id).isdigit():
+        logs = logs.filter(session_id=int(session_id))
+
+    change_type = request.query_params.get("change_type")
+    if change_type:
+        logs = logs.filter(change_type=change_type.upper())
+
+    course_id = request.query_params.get("course_id")
+    if course_id and str(course_id).isdigit():
+        logs = logs.filter(session__course_id=int(course_id))
+
+    lecturer_id = request.query_params.get("lecturer_id")
+    if lecturer_id and str(lecturer_id).isdigit():
+        logs = logs.filter(session__lecturer_id=int(lecturer_id))
+
+    return [change_log_to_dict(log) for log in logs]
+
+
+@api_view(["GET"])
+@permission_classes([IsAdminOrStaff])
+def session_history(request):
+    return Response(session_change_logs(request))
+
+
+@api_view(["GET"])
+@permission_classes([IsAdminOrStaff])
+def session_history_detail(request, session_id):
+    if not AttendanceSession.objects.filter(id=session_id).exists():
+        return Response({"detail": "Session not found."}, status=404)
+
+    logs = SessionChangeLog.objects.select_related(
+        "session",
+        "session__course",
+        "session__subject",
+        "session__lecturer",
+        "changed_by",
+    ).filter(session_id=session_id)
+
+    return Response([change_log_to_dict(log) for log in logs])
+
+
+# ======================================================
+# LECTURER STUDENT ATTENDANCE (% OF ALL STUDENTS IN COURSE + SUBJECT)
+# ======================================================
+
+@api_view(["GET"])
+@permission_classes([IsLecturer])
+def lecturer_scope(request):
+    """Courses (with subjects) the lecturer is assigned to, for report filters."""
+    user = request.user
+    if user.is_staff and user.is_superuser:
+        courses = Course.objects.all().order_by("name")
+    else:
+        courses = Course.objects.filter(
+            lecturercourse__lecturer=user
+        ).distinct().order_by("name")
+
+    return Response([
+        {
+            "id": course.id,
+            "name": course.name,
+            "code": course.code,
+            "subjects": [
+                {
+                    "id": subject.id,
+                    "name": subject.name,
+                    "code": subject.code,
+                }
+                for subject in Subject.objects.filter(course=course).order_by("name")
+            ],
+        }
+        for course in courses
+    ])
+
+
+@api_view(["GET"])
+@permission_classes([IsLecturer])
+def lecturer_students(request):
+    from students.models import Student
+    from django.utils.dateparse import parse_date
+
+    user = request.user
+
+    course_id = request.query_params.get("course_id")
+    subject_id = request.query_params.get("subject_id")
+
+    if not course_id or not str(course_id).isdigit():
+        return Response(
+            {"detail": "course_id is required."},
+            status=400,
+        )
+
+    course_id = int(course_id)
+    subject_id = (
+        int(subject_id) if subject_id and str(subject_id).isdigit() else None
+    )
+
+    # Lecturers may only report on the courses they are assigned to.
+    if not user.is_staff and not user.is_superuser:
+        allowed = LecturerCourse.objects.filter(
+            lecturer=user, course_id=course_id
+        ).exists()
+        if not allowed:
+            return Response(
+                {"detail": "You are not assigned to this course."},
+                status=403,
+            )
+
+    course = Course.objects.filter(id=course_id).first()
+    if not course:
+        return Response({"detail": "Course not found."}, status=404)
+
+    subject = None
+    if subject_id:
+        subject = Subject.objects.filter(id=subject_id, course=course).first()
+        if not subject:
+            return Response({"detail": "Subject not found."}, status=404)
+
+    sessions = AttendanceSession.objects.filter(course=course)
+    if subject_id:
+        sessions = sessions.filter(subject_id=subject_id)
+
+    start_date = parse_date(request.query_params.get("start_date") or "")
+    if start_date:
+        sessions = sessions.filter(date__gte=start_date)
+
+    end_date = parse_date(request.query_params.get("end_date") or "")
+    if end_date:
+        sessions = sessions.filter(date__lte=end_date)
+
+    session_list = list(sessions)
+
+    students = Student.objects.filter(course=course).select_related("course")
+
+    rows = []
+    for student in students:
+        attended, total, percentage = student_attendance_stats(student, session_list)
+        rows.append({
+            "student_id": student.id,
+            "name": student.full_name,
+            "registration": student.reg_number,
+            "course": course.name,
+            "course_code": course.code,
+            "attended": attended,
+            "total_sessions": total,
+            "percentage": percentage,
+            "status": attendance_status_label(percentage),
+        })
+
+    average = (
+        round(sum(row["percentage"] for row in rows) / len(rows), 2) if rows else 0.0
+    )
+
+    return Response({
+        "course": course.name,
+        "course_code": course.code,
+        "subject": subject.name if subject else None,
+        "subject_id": subject.id if subject else None,
+        "students": rows,
+        "summary": {
+            "total_students": len(rows),
+            "total_sessions": len(session_list),
+            "average_percentage": average,
+            "critical_students": len([r for r in rows if r["status"] == "Critical"]),
+        },
+    })
+

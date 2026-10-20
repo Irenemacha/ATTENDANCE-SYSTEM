@@ -63,7 +63,9 @@ export default function HODDashboardPage() {
                   <p className={`text-lg font-bold ${c.percentage >= 75 ? "text-emerald-600" : c.percentage >= 50 ? "text-amber-600" : "text-red-600"}`}>
                     {c.percentage}%
                   </p>
-                  <p className="text-xs text-muted-foreground">{c.present}/{c.total_attendance}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {c.attended ?? 0}/{c.total_students ?? 0} above 75%
+                  </p>
                 </div>
               </div>
             ))}

@@ -26,6 +26,7 @@ INSTALLED_APPS = [
     "courses",
     "students",
     "attendance",
+    "academics",
     "accounts.apps.AccountsConfig",
     "dashboard", 
 ]

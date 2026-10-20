@@ -21,6 +21,9 @@ import {
   Download,
   Upload,
   UserRound,
+  UserCheck,
+  CalendarDays,
+  Pencil,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -34,14 +37,38 @@ type SidebarProps = {
 const adminLinks = [
   { title: "Overview", items: [{ href: "/admin", label: "Dashboard", icon: BarChart3 }] },
   {
+    title: "Reports",
+    items: [
+      { href: "/admin/reports", label: "Attendance Reports", icon: LineChart },
+      { href: "/admin/session-history", label: "Session History", icon: History },
+    ],
+  },
+  {
     title: "Management",
     items: [
       { href: "/admin/users", label: "Users", icon: Users },
       { href: "/admin/groups", label: "Groups", icon: Shield },
       { href: "/admin/departments", label: "Departments", icon: Building2 },
       { href: "/admin/courses", label: "Courses", icon: BookOpen },
+      { href: "/admin/subjects", label: "Subjects", icon: BookOpen },
       { href: "/admin/classrooms", label: "Classrooms", icon: MapPin },
       { href: "/admin/lecturers", label: "Lecturers", icon: UserRound },
+      { href: "/admin/students", label: "Students", icon: GraduationCap },
+      { href: "/admin/enrollment", label: "Student Enrollment", icon: UserCheck },
+    ],
+  },
+  {
+    title: "Academic",
+    items: [
+      { href: "/admin/semesters", label: "Semester Management", icon: CalendarDays },
+    ],
+  },
+  {
+    title: "Timetable",
+    items: [
+      { href: "/admin/timetable", label: "View Timetable", icon: CalendarDays },
+      { href: "/admin/timetable/upload", label: "Upload Timetable", icon: Upload },
+      { href: "/admin/timetable/manage", label: "Manage Timetable", icon: Pencil },
     ],
   },
   {
@@ -61,6 +88,12 @@ const lecturerLinks = [
       { href: "/lecturer/history", label: "History", icon: History },
     ],
   },
+  {
+    title: "Reports",
+    items: [
+      { href: "/lecturer/students", label: "Student Attendance", icon: LineChart },
+    ],
+  },
   { title: "Account", items: [{ href: "/lecturer/profile", label: "Profile", icon: UserCircle }] },
 ];
 
@@ -69,6 +102,7 @@ const hodLinks = [
   {
     title: "Reports",
     items: [
+      { href: "/hod/students", label: "Student Attendance", icon: GraduationCap },
       { href: "/hod/reports", label: "Session Reports", icon: LineChart },
       { href: "/hod/compliance", label: "Compliance", icon: AlertTriangle },
     ],

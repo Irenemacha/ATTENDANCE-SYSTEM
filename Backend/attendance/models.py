@@ -132,6 +132,54 @@ class Attendance(models.Model):
     decimal_places=2,
     default=0
     )
+# =========================
+# SESSION CHANGE HISTORY
+# =========================
+class SessionChangeLog(models.Model):
+
+    CHANGE_TYPES = [
+        ("START", "Session Started"),
+        ("OVERRIDE", "Override / Rescheduled"),
+        ("END", "Session Ended"),
+        ("AUTO_CLOSE", "Auto Closed"),
+        ("TIMETABLE_CHANGE", "Timetable Changed"),
+    ]
+
+    session = models.ForeignKey(
+        AttendanceSession,
+        on_delete=models.CASCADE,
+        related_name="change_logs"
+    )
+
+    change_type = models.CharField(
+        max_length=32,
+        choices=CHANGE_TYPES
+    )
+
+    original_start_time = models.DateTimeField(null=True, blank=True)
+    original_end_time = models.DateTimeField(null=True, blank=True)
+
+    actual_start_time = models.DateTimeField(null=True, blank=True)
+    actual_end_time = models.DateTimeField(null=True, blank=True)
+
+    reason = models.TextField(null=True, blank=True)
+
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+
+    changed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-changed_at"]
+
+    def __str__(self):
+        return f"Session {self.session_id} - {self.change_type}"
+
+
 class MovementLog(models.Model):
 
     student = models.ForeignKey(

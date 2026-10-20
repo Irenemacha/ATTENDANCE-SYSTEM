@@ -8,8 +8,8 @@ from .serializers import NotificationSerializer
 
 from accounts.permissions import IsStudent
 from .models import Student
-from django.db.models import Sum
 from attendance.models import Attendance, AttendanceSession
+from attendance.services import student_attendance_stats, attendance_status_label
 
 @api_view(["GET"])
 @permission_classes([IsStudent])
@@ -20,43 +20,26 @@ def student_dashboard(request):
         # ✅ correct direction: User → Student
         student = Student.objects.get(user=user)
 
-        total_sessions = AttendanceSession.objects.filter(
+        course_sessions = AttendanceSession.objects.filter(
             course=student.course
-        ).count()
-        
-        print("DEBUG TOTAL SESSIONS:", total_sessions)
+        )
+        total_sessions = course_sessions.count()
 
-        # A session counts as attended only after its matching check-in and
-        # check-out have both been recorded. This keeps the percentage based
-        # on total sessions versus completed attendance sessions.
         attendance_records = Attendance.objects.filter(
-        student=student
+            student=student
         )
 
-
-        attended_sessions = attendance_records.filter(
-        check_in_time__isnull=False
-        ).exclude(
-          status="ABSENT"
-        ).count()
-
+        # Session-count based percentage shared with the web reports: a session
+        # counts as attended once the student has checked in and is not absent.
+        attended_sessions, total_sessions, percentage = student_attendance_stats(
+            student, course_sessions
+        )
 
         total_absent = attendance_records.filter(
-        status="ABSENT"
+            status="ABSENT"
         ).count()
 
-
-# Calculate actual attendance percentage
-        total_percentage = attendance_records.aggregate(
-        total=Sum("attendance_percentage")
-        )["total"] or 0
-
-
-        percentage = round(
-        total_percentage / total_sessions,
-        2
-        )   if total_sessions > 0 else 0 
-        status = "Fine" if percentage >= 75 else "Critical"
+        status = attendance_status_label(percentage)
 
         return Response({
             "success": True,

@@ -1,6 +1,10 @@
 from django.shortcuts import render
 from rest_framework import generics
-from .models import Department
+
+# The academic department that courses (and staff) reference lives in the
+# courses app. Serving that model here keeps /api/departments/ and course
+# assignment in sync.
+from courses.models import Department
 from .serializers import DepartmentSerializer
 
 

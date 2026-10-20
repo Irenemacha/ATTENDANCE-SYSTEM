@@ -30,6 +30,31 @@ export default function StartSessionPage() {
   const [radius, setRadius] = useState("30");
   const [isOverride, setIsOverride] = useState(false);
   const [overrideReason, setOverrideReason] = useState("");
+  const [overrideStartTime, setOverrideStartTime] = useState("");
+  const [overrideEndTime, setOverrideEndTime] = useState("");
+
+  function padTime(value: number) {
+    return String(value).padStart(2, "0");
+  }
+
+  function defaultOverrideTimes() {
+    const now = new Date();
+    const end = new Date(now.getTime() + 120 * 60 * 1000);
+    const crossesMidnight = end.getDate() !== now.getDate();
+    return {
+      start: `${padTime(now.getHours())}:${padTime(now.getMinutes())}`,
+      end: crossesMidnight ? "23:59" : `${padTime(end.getHours())}:${padTime(end.getMinutes())}`,
+    };
+  }
+
+  function toggleOverride(checked: boolean) {
+    setIsOverride(checked);
+    if (checked) {
+      const { start, end } = defaultOverrideTimes();
+      setOverrideStartTime((prev) => prev || start);
+      setOverrideEndTime((prev) => prev || end);
+    }
+  }
 
   useEffect(() => {
     Promise.all([
@@ -44,7 +69,7 @@ export default function StartSessionPage() {
 
   useEffect(() => {
     if (selectedCourse) {
-      api.get(`/subjects/?course_id=${selectedCourse}`).then((res) => {
+      api.get(`/courses/subjects/?course_id=${selectedCourse}`).then((res) => {
         const data = Array.isArray(res.data) ? res.data : (res.data as any)?.results ?? [];
         setSubjects(data as { id: number; name: string }[]);
       }).catch(() => setSubjects([]));
@@ -79,8 +104,18 @@ export default function StartSessionPage() {
         radius: parseFloat(radius) || 30,
       };
       if (isOverride) {
+        if (!overrideStartTime || !overrideEndTime) {
+          setError("Please select a start time and an end time for the override.");
+          return;
+        }
+        if (overrideEndTime <= overrideStartTime) {
+          setError("End time must be after start time.");
+          return;
+        }
         payload.is_override = true;
         payload.override_reason = overrideReason;
+        payload.start_time = overrideStartTime;
+        payload.end_time = overrideEndTime;
       }
       await api.post("/attendance/start-session/", payload);
       router.push("/lecturer/sessions");
@@ -155,17 +190,39 @@ export default function StartSessionPage() {
                   <input
                     type="checkbox"
                     checked={isOverride}
-                    onChange={(e) => setIsOverride(e.target.checked)}
+                    onChange={(e) => toggleOverride(e.target.checked)}
                     className="h-4 w-4"
                   />
                   No timetable for this slot (override)
                 </label>
                 {isOverride && (
-                  <Input
-                    placeholder="Reason (e.g. postponed/replacement class)"
-                    value={overrideReason}
-                    onChange={(e) => setOverrideReason(e.target.value)}
-                  />
+                  <>
+                    <Input
+                      placeholder="Reason (e.g. postponed/replacement class)"
+                      value={overrideReason}
+                      onChange={(e) => setOverrideReason(e.target.value)}
+                    />
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="grid gap-2">
+                        <label className="text-xs font-medium text-muted-foreground">Start time</label>
+                        <Input
+                          type="time"
+                          value={overrideStartTime}
+                          onChange={(e) => setOverrideStartTime(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <label className="text-xs font-medium text-muted-foreground">End time</label>
+                        <Input
+                          type="time"
+                          value={overrideEndTime}
+                          onChange={(e) => setOverrideEndTime(e.target.value)}
+                          required
+                        />
+                      </div>
+                    </div>
+                  </>
                 )}
               </div>
 
