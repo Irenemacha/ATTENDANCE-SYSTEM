@@ -104,18 +104,20 @@ export default function StartSessionPage() {
         radius: parseFloat(radius) || 30,
       };
       if (isOverride) {
-        if (!overrideStartTime || !overrideEndTime) {
-          setError("Please select a start time and an end time for the override.");
+        if (!!overrideStartTime !== !!overrideEndTime) {
+          setError("Provide both start and end time, or leave both blank to use the default 2 hours.");
           return;
         }
-        if (overrideEndTime <= overrideStartTime) {
+        if (overrideStartTime && overrideEndTime && overrideEndTime <= overrideStartTime) {
           setError("End time must be after start time.");
           return;
         }
         payload.is_override = true;
         payload.override_reason = overrideReason;
-        payload.start_time = overrideStartTime;
-        payload.end_time = overrideEndTime;
+        if (overrideStartTime && overrideEndTime) {
+          payload.start_time = overrideStartTime;
+          payload.end_time = overrideEndTime;
+        }
       }
       await api.post("/attendance/start-session/", payload);
       router.push("/lecturer/sessions");
@@ -204,24 +206,25 @@ export default function StartSessionPage() {
                     />
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div className="grid gap-2">
-                        <label className="text-xs font-medium text-muted-foreground">Start time</label>
+                        <label className="text-xs font-medium text-muted-foreground">Start time (optional)</label>
                         <Input
                           type="time"
                           value={overrideStartTime}
                           onChange={(e) => setOverrideStartTime(e.target.value)}
-                          required
                         />
                       </div>
                       <div className="grid gap-2">
-                        <label className="text-xs font-medium text-muted-foreground">End time</label>
+                        <label className="text-xs font-medium text-muted-foreground">End time (optional)</label>
                         <Input
                           type="time"
                           value={overrideEndTime}
                           onChange={(e) => setOverrideEndTime(e.target.value)}
-                          required
                         />
                       </div>
                     </div>
+                    <p className="text-xs text-muted-foreground">
+                      Leave both times blank to run the session for the default 2 hours.
+                    </p>
                   </>
                 )}
               </div>
