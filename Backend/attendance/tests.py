@@ -1,4 +1,4 @@
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Group, User
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -351,4 +351,70 @@ class SessionChangeHistoryTests(TestCase):
         self.client.force_authenticate(user=self.admin)
         response = self.client.get("/api/attendance/session-history/9999/")
         self.assertEqual(response.status_code, 404)
+
+
+class ActiveSessionPercentageTests(TestCase):
+    def setUp(self):
+        department = Department.objects.create(name="CS")
+        self.course = Course.objects.create(
+            name="BSc", code="CS01", department=department
+        )
+        self.subject = Subject.objects.create(
+            name="Algebra", code="CS101", course=self.course
+        )
+        self.lecturer = User.objects.create_user(
+            username="lect1", password="pass", is_staff=True
+        )
+        self.session = AttendanceSession.objects.create(
+            lecturer=self.lecturer,
+            course=self.course,
+            subject=self.subject,
+            latitude=0.0,
+            longitude=0.0,
+        )
+
+        student_group = Group.objects.create(name="Student")
+        self.student_user = User.objects.create_user(
+            username="stud1", password="pass"
+        )
+        self.student_user.groups.add(student_group)
+        self.student = Student.objects.create(
+            user=self.student_user,
+            reg_number="S001",
+            full_name="Stella Student",
+            email="stella@example.com",
+            course=self.course,
+            year_of_study=2,
+        )
+        other_user = User.objects.create_user(username="stud2", password="pass")
+        other_student = Student.objects.create(
+            user=other_user,
+            reg_number="S002",
+            full_name="Other Student",
+            email="other@example.com",
+            course=self.course,
+            year_of_study=2,
+        )
+        Attendance.objects.create(
+            student=other_student,
+            session=self.session,
+            status="PRESENT",
+            check_in_time=timezone.now(),
+        )
+
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.student_user)
+
+    def test_active_session_returns_same_percentage_as_web_reports(self):
+        response = self.client.get("/api/attendance/active-session/")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["session_percentage"], 50.0)
+        self.assertEqual(response.data["attended_students"], 1)
+        self.assertEqual(response.data["total_students"], 2)
+
+    def test_active_session_requires_student(self):
+        outsider = User.objects.create_user(username="outsider", password="pass")
+        self.client.force_authenticate(user=outsider)
+        response = self.client.get("/api/attendance/active-session/")
+        self.assertEqual(response.status_code, 403)
 

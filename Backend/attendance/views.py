@@ -1171,6 +1171,16 @@ def session_report(request, session_id):
 
 
 
+def _session_attendance_payload(session):
+    """Class-wide session attendance, identical to the web reports."""
+    total_students, attended_students, percentage = session_attendance_summary(session)
+    return {
+        "total_students": total_students,
+        "attended_students": attended_students,
+        "session_percentage": percentage,
+    }
+
+
 # ======================================================
 # STUDENT ACTIVE SESSION
 # ======================================================
@@ -1210,6 +1220,7 @@ def active_session(request):
             "session_ended": not session.is_active,
             "course": session.course.name,
             "subject": session.subject.name,
+            **_session_attendance_payload(session),
             "attendance_state": "CHECKED_IN",
             "checked_in": True,
             "checked_out": False,
@@ -1243,6 +1254,7 @@ def active_session(request):
             "percentage": completed.attendance_percentage,
             "course": session.course.name,
             "subject": session.subject.name,
+            **_session_attendance_payload(session),
             "attendance_state": "CHECKED_OUT",
             "checked_in": True,
             "checked_out": True,
@@ -1271,6 +1283,7 @@ def active_session(request):
         "session_ended": True,
         "course": ended_session.course.name,
         "subject": ended_session.subject.name,
+        **_session_attendance_payload(ended_session),
         "attendance_state": "SESSION_ENDED",
         "can_check_in": False,
         "can_check_out": True
@@ -1308,6 +1321,8 @@ def active_session(request):
 
         "subject": session.subject.name,
 
+        **_session_attendance_payload(session),
+
         "attendance_state": "SESSION_ENDED",
 
         "checked_in": True,
@@ -1344,6 +1359,7 @@ def active_session(request):
         "checkout_deadline": session.checkout_deadline,
         "course": session.course.name,
         "subject": session.subject.name,
+        **_session_attendance_payload(session),
         "attendance_state": "NOT_CHECKED_IN",
         "checked_in": False,
         "checked_out": False,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Download, GraduationCap, LineChart, Search } from "lucide-react";
+import { Download, FileSpreadsheet, GraduationCap, LineChart, Search } from "lucide-react";
 
 import { LecturerShell } from "@/components/lecturer-shell";
 import { EmptyState } from "@/components/empty-state";
@@ -27,6 +27,7 @@ export default function LecturerStudentsPage() {
   const [summary, setSummary] = useState({ total_students: 0, average_percentage: 0, critical_students: 0, total_sessions: 0 });
   const [courses, setCourses] = useState<CourseOption[]>([]);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
 
   const [courseId, setCourseId] = useState("");
@@ -107,6 +108,32 @@ export default function LecturerStudentsPage() {
     URL.revokeObjectURL(url);
   }
 
+  async function downloadExcel() {
+    setExporting(true);
+    try {
+      const XLSX = await import("xlsx");
+      const rows: (string | number)[][] = [
+        ["Name", "Registration", "Course", "Course Code", "Subject", "Attended", "Total Sessions", "Percentage", "Status"],
+        ...filtered.map((s) => [
+          s.name, s.registration, s.course ?? "", s.course_code ?? "", scope.subject ?? "",
+          s.attended, s.total_sessions, s.percentage, s.status,
+        ]),
+      ];
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(rows), "Student Attendance");
+      const out = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+      const blob = new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${scope.course_code || "course"}-student-attendance.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
+  }
+
   if (courses.length === 0 && !loading) {
     return (
       <LecturerShell>
@@ -130,9 +157,14 @@ export default function LecturerStudentsPage() {
               : "All students in your course and subject"}
           </p>
         </div>
-        <Button onClick={downloadCSV} disabled={filtered.length === 0}>
-          <Download className="mr-2 h-4 w-4" /> Export CSV
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={downloadExcel} disabled={filtered.length === 0 || exporting}>
+            <FileSpreadsheet className="mr-2 h-4 w-4" /> {exporting ? "Exporting..." : "Export Excel"}
+          </Button>
+          <Button onClick={downloadCSV} disabled={filtered.length === 0}>
+            <Download className="mr-2 h-4 w-4" /> Export CSV
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

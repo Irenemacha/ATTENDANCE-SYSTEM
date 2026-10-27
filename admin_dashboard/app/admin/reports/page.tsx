@@ -22,6 +22,8 @@ export default function AdminReportsPage() {
   const [search, setSearch] = useState("");
   const [courseFilter, setCourseFilter] = useState("");
   const [lecturerFilter, setLecturerFilter] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
 
   useEffect(() => {
     Promise.all([
@@ -39,12 +41,24 @@ export default function AdminReportsPage() {
   }, []);
 
   const filtered = sessions.filter((s) => {
-    const query = search.toLowerCase();
+    const day = s.date?.slice(0, 10) ?? "";
+    if (startDate && day < startDate) return false;
+    if (endDate && day > endDate) return false;
+
+    const query = search.trim().toLowerCase();
+    const pct = String(s.percentage);
+    const rawDate = s.date?.toLowerCase() ?? "";
+    const prettyDate = formatDate(s.date).toLowerCase();
     const matchesSearch =
       !query ||
       s.course.toLowerCase().includes(query) ||
       s.subject.toLowerCase().includes(query) ||
-      s.lecturer.toLowerCase().includes(query);
+      s.lecturer.toLowerCase().includes(query) ||
+      s.course_code?.toLowerCase().includes(query) ||
+      rawDate.includes(query) ||
+      prettyDate.includes(query) ||
+      pct === query ||
+      `${pct}%` === query;
     const matchesCourse = !courseFilter || s.course_code === courseFilter;
     const matchesLecturer = !lecturerFilter || s.lecturer === lecturerFilter;
     return matchesSearch && matchesCourse && matchesLecturer;
@@ -111,7 +125,7 @@ export default function AdminReportsPage() {
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 className="pl-9"
-                placeholder="Search course, subject, or lecturer"
+                placeholder="Search course, subject, lecturer, date, or %"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -136,6 +150,20 @@ export default function AdminReportsPage() {
                 <option key={name} value={name}>{name}</option>
               ))}
             </select>
+            <input
+              type="date"
+              className="flex h-10 rounded-xl border bg-background px-3 text-sm"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              title="From date"
+            />
+            <input
+              type="date"
+              className="flex h-10 rounded-xl border bg-background px-3 text-sm"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              title="To date"
+            />
           </div>
 
           {filtered.length === 0 ? (

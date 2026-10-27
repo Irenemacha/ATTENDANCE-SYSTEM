@@ -974,6 +974,18 @@ class _SessionCard extends StatelessWidget {
             label: 'Your state',
             value: _attendanceStateLabel(attendanceState),
           ),
+          if (session?['session_percentage'] != null) ...[
+            _MetricRow(
+              label: 'Session attendance',
+              value:
+                  '${_asDouble(session?['session_percentage']).toStringAsFixed(1)}%',
+            ),
+            _MetricRow(
+              label: 'Students attended',
+              value:
+                  '${session?['attended_students'] ?? 0}/${session?['total_students'] ?? 0}',
+            ),
+          ],
         ],
       ),
     );
