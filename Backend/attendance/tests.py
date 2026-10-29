@@ -39,6 +39,8 @@ class OverrideTimeTests(TestCase):
             "classroom_id": self.classroom.id,
             "is_override": True,
             "override_reason": "Postponed class",
+            "start_time": "09:00",
+            "end_time": "11:00",
         }
         data.update(extra)
         return data
@@ -86,32 +88,23 @@ class OverrideTimeTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("HH:MM", response.data["error"])
 
-    def test_override_without_times_uses_defaults(self):
-        response = self.client.post(
-            "/api/attendance/start-session/", self.payload(), format="json"
-        )
-        self.assertEqual(response.status_code, 201, response.data)
-
-        session = AttendanceSession.objects.get(id=response.data["session_id"])
-        self.assertEqual(session.override_duration_minutes, 120)
-        self.assertIsNone(session.end_time)
-
-    def test_override_with_only_start_uses_two_hours(self):
+    def test_override_requires_times(self):
         response = self.client.post(
             "/api/attendance/start-session/",
-            self.payload(start_time="09:00"),
+            self.payload(start_time="", end_time=""),
             format="json",
         )
-        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("required", response.data["error"].lower())
 
-        session = AttendanceSession.objects.get(id=response.data["session_id"])
-        self.assertEqual(
-            timezone.localtime(session.start_time).strftime("%H:%M"), "09:00"
+    def test_override_requires_end_time(self):
+        response = self.client.post(
+            "/api/attendance/start-session/",
+            self.payload(start_time="09:00", end_time=""),
+            format="json",
         )
-        self.assertEqual(
-            timezone.localtime(session.end_time).strftime("%H:%M"), "11:00"
-        )
-        self.assertEqual(session.override_duration_minutes, 120)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("required", response.data["error"].lower())
 
     def test_override_without_reason_allowed(self):
         data = self.payload()
@@ -292,7 +285,12 @@ class SessionChangeHistoryTests(TestCase):
         )
 
     def test_start_session_records_change(self):
-        response = self.start(is_override=True, override_reason="Replacement class")
+        response = self.start(
+            is_override=True,
+            override_reason="Replacement class",
+            start_time="09:00",
+            end_time="11:00",
+        )
         self.assertEqual(response.status_code, 201, response.data)
         session = AttendanceSession.objects.get(id=response.data["session_id"])
 
@@ -363,7 +361,12 @@ class SessionChangeHistoryTests(TestCase):
         self.assertEqual(response.status_code, 403)
 
     def test_history_endpoint_lists_changes(self):
-        self.start(is_override=True, override_reason="Replacement")
+        self.start(
+            is_override=True,
+            override_reason="Replacement",
+            start_time="09:00",
+            end_time="11:00",
+        )
 
         self.client.force_authenticate(user=self.admin)
         response = self.client.get("/api/attendance/session-history/")

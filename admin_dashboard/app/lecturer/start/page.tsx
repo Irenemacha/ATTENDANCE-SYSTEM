@@ -32,6 +32,7 @@ export default function StartSessionPage() {
   const [overrideReason, setOverrideReason] = useState("");
   const [overrideStartTime, setOverrideStartTime] = useState("");
   const [overrideEndTime, setOverrideEndTime] = useState("");
+  const [overrideTimesEdited, setOverrideTimesEdited] = useState(false);
 
   function padTime(value: number) {
     return String(value).padStart(2, "0");
@@ -49,6 +50,7 @@ export default function StartSessionPage() {
 
   function toggleOverride(checked: boolean) {
     setIsOverride(checked);
+    setOverrideTimesEdited(false);
     if (checked) {
       const { start, end } = defaultOverrideTimes();
       setOverrideStartTime((prev) => prev || start);
@@ -112,14 +114,27 @@ export default function StartSessionPage() {
         radius: parseFloat(radius) || 30,
       };
       if (isOverride) {
-        if (overrideStartTime && overrideEndTime && overrideEndTime <= overrideStartTime) {
+        let startTime = overrideStartTime;
+        let endTime = overrideEndTime;
+        if (!overrideTimesEdited) {
+          const defaults = defaultOverrideTimes();
+          startTime = defaults.start;
+          endTime = defaults.end;
+          setOverrideStartTime(startTime);
+          setOverrideEndTime(endTime);
+        }
+        if (!startTime || !endTime) {
+          setError("Start time and end time are required for an override.");
+          return;
+        }
+        if (endTime <= startTime) {
           setError("End time must be after start time.");
           return;
         }
         payload.is_override = true;
         payload.override_reason = overrideReason;
-        if (overrideStartTime) payload.start_time = overrideStartTime;
-        if (overrideEndTime) payload.end_time = overrideEndTime;
+        payload.start_time = startTime;
+        payload.end_time = endTime;
       }
       await api.post("/attendance/start-session/", payload);
       router.push("/lecturer/sessions");
@@ -208,25 +223,31 @@ export default function StartSessionPage() {
                     />
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div className="grid gap-2">
-                        <label className="text-xs font-medium text-muted-foreground">Start time (optional)</label>
+                        <label className="text-xs font-medium text-muted-foreground">Start time</label>
                         <Input
                           type="time"
                           value={overrideStartTime}
-                          onChange={(e) => setOverrideStartTime(e.target.value)}
+                          onChange={(e) => {
+                            setOverrideTimesEdited(true);
+                            setOverrideStartTime(e.target.value);
+                          }}
                         />
                       </div>
                       <div className="grid gap-2">
-                        <label className="text-xs font-medium text-muted-foreground">End time (optional)</label>
+                        <label className="text-xs font-medium text-muted-foreground">End time</label>
                         <Input
                           type="time"
                           value={overrideEndTime}
-                          onChange={(e) => setOverrideEndTime(e.target.value)}
+                          onChange={(e) => {
+                            setOverrideTimesEdited(true);
+                            setOverrideEndTime(e.target.value);
+                          }}
                         />
                       </div>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Both times are optional. Leave the end blank to run for 2 hours, or both
-                      blank to start now for 2 hours.
+                      Start time defaults to the exact moment you start the session, with the end
+                      two hours later. Edit either time if you need a different window.
                     </p>
                   </>
                 )}
