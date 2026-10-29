@@ -112,20 +112,14 @@ export default function StartSessionPage() {
         radius: parseFloat(radius) || 30,
       };
       if (isOverride) {
-        if (!!overrideStartTime !== !!overrideEndTime) {
-          setError("Provide both start and end time, or leave both blank to use the default 2 hours.");
-          return;
-        }
         if (overrideStartTime && overrideEndTime && overrideEndTime <= overrideStartTime) {
           setError("End time must be after start time.");
           return;
         }
         payload.is_override = true;
         payload.override_reason = overrideReason;
-        if (overrideStartTime && overrideEndTime) {
-          payload.start_time = overrideStartTime;
-          payload.end_time = overrideEndTime;
-        }
+        if (overrideStartTime) payload.start_time = overrideStartTime;
+        if (overrideEndTime) payload.end_time = overrideEndTime;
       }
       await api.post("/attendance/start-session/", payload);
       router.push("/lecturer/sessions");
@@ -231,7 +225,8 @@ export default function StartSessionPage() {
                       </div>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Leave both times blank to run the session for the default 2 hours.
+                      Both times are optional. Leave the end blank to run for 2 hours, or both
+                      blank to start now for 2 hours.
                     </p>
                   </>
                 )}

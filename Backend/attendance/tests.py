@@ -77,15 +77,6 @@ class OverrideTimeTests(TestCase):
         )
         self.assertEqual(response.status_code, 400)
 
-    def test_only_start_rejected(self):
-        response = self.client.post(
-            "/api/attendance/start-session/",
-            self.payload(start_time="09:00"),
-            format="json",
-        )
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("both start time and end time", response.data["error"].lower())
-
     def test_bad_format_rejected(self):
         response = self.client.post(
             "/api/attendance/start-session/",
@@ -104,6 +95,23 @@ class OverrideTimeTests(TestCase):
         session = AttendanceSession.objects.get(id=response.data["session_id"])
         self.assertEqual(session.override_duration_minutes, 120)
         self.assertIsNone(session.end_time)
+
+    def test_override_with_only_start_uses_two_hours(self):
+        response = self.client.post(
+            "/api/attendance/start-session/",
+            self.payload(start_time="09:00"),
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+
+        session = AttendanceSession.objects.get(id=response.data["session_id"])
+        self.assertEqual(
+            timezone.localtime(session.start_time).strftime("%H:%M"), "09:00"
+        )
+        self.assertEqual(
+            timezone.localtime(session.end_time).strftime("%H:%M"), "11:00"
+        )
+        self.assertEqual(session.override_duration_minutes, 120)
 
     def test_override_without_reason_allowed(self):
         data = self.payload()
