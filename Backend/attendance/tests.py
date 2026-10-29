@@ -1,5 +1,10 @@
+import shutil
+import tempfile
+from datetime import timedelta
+
 from django.contrib.auth.models import Group, User
-from django.test import TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -99,6 +104,27 @@ class OverrideTimeTests(TestCase):
         session = AttendanceSession.objects.get(id=response.data["session_id"])
         self.assertEqual(session.override_duration_minutes, 120)
         self.assertIsNone(session.end_time)
+
+    def test_override_without_reason_allowed(self):
+        data = self.payload()
+        data.pop("override_reason")
+        response = self.client.post(
+            "/api/attendance/start-session/", data, format="json"
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+
+    def test_start_uses_dashboard_geofence_values(self):
+        response = self.client.post(
+            "/api/attendance/start-session/",
+            self.payload(latitude=-6.8, longitude=39.2, radius=75),
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+
+        session = AttendanceSession.objects.get(id=response.data["session_id"])
+        self.assertAlmostEqual(session.latitude, -6.8)
+        self.assertAlmostEqual(session.longitude, 39.2)
+        self.assertEqual(session.radius_meters, 75)
 
     def test_auto_close_uses_override_end_time(self):
         from .views import auto_close_expired_sessions
@@ -233,13 +259,14 @@ class SessionChangeHistoryTests(TestCase):
             username="stud1", password="pass"
         )
         days = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
-        today = days[timezone.localtime().weekday()]
+        now = timezone.localtime()
+        today = days[now.weekday()]
         self.timetable = Timetable.objects.create(
             course=self.course,
             lecturer=self.lecturer,
             day=today,
-            start_time="09:00",
-            end_time="11:00",
+            start_time=(now - timedelta(minutes=5)).time(),
+            end_time=(now + timedelta(minutes=5)).time(),
             room="LH-101",
         )
         self.client = APIClient()
@@ -418,3 +445,37 @@ class ActiveSessionPercentageTests(TestCase):
         response = self.client.get("/api/attendance/active-session/")
         self.assertEqual(response.status_code, 403)
 
+
+class HodLedgerUploadTests(TestCase):
+    def setUp(self):
+        hod_group = Group.objects.create(name="HOD")
+        self.hod = User.objects.create_user(username="hod1", password="pass")
+        self.hod.groups.add(hod_group)
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.hod)
+
+        self.media_root = tempfile.mkdtemp()
+        self.override = override_settings(MEDIA_ROOT=self.media_root)
+        self.override.enable()
+        self.addCleanup(self.override.disable)
+        self.addCleanup(shutil.rmtree, self.media_root, ignore_errors=True)
+
+    def test_upload_requires_file(self):
+        response = self.client.post("/api/attendance/hod/upload-ledger/", {})
+        self.assertEqual(response.status_code, 400)
+
+    def test_upload_rejects_unsupported_extension(self):
+        upload = SimpleUploadedFile("ledger.txt", b"not a ledger")
+        response = self.client.post(
+            "/api/attendance/hod/upload-ledger/", {"file": upload}
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_upload_saves_ledger(self):
+        upload = SimpleUploadedFile("ledger.csv", b"reg_number,status\nS001,PRESENT\n")
+        response = self.client.post(
+            "/api/attendance/hod/upload-ledger/", {"file": upload}
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertIn("ledgers/", response.data["file"])
+        self.assertTrue(response.data["file"].endswith("ledger.csv"))

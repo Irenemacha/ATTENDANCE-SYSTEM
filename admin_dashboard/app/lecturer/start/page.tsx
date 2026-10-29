@@ -58,10 +58,12 @@ export default function StartSessionPage() {
 
   useEffect(() => {
     Promise.all([
-      api.get<Course[]>("/courses/").catch(() => ({ data: [] })),
+      api.get<(Course & { subjects?: { id: number; name: string }[] })[]>("/attendance/lecturer/scope/")
+        .catch(() => api.get<Course[]>("/courses/").catch(() => ({ data: [] }))),
       api.get<Classroom[]>("/courses/classrooms/").catch(() => ({ data: [] })),
     ]).then(([c, cl]) => {
-      setCourses(Array.isArray(c.data) ? c.data : (c.data as any)?.results ?? []);
+      const courseData = Array.isArray(c.data) ? c.data : (c.data as any)?.results ?? [];
+      setCourses(courseData);
       setClassrooms(Array.isArray(cl.data) ? cl.data : []);
       setLoading(false);
     });
@@ -69,6 +71,12 @@ export default function StartSessionPage() {
 
   useEffect(() => {
     if (selectedCourse) {
+      const course = (courses as (Course & { subjects?: { id: number; name: string }[] })[])
+        .find((c) => c.id === selectedCourse);
+      if (course?.subjects) {
+        setSubjects(course.subjects);
+        return;
+      }
       api.get(`/courses/subjects/?course_id=${selectedCourse}`).then((res) => {
         const data = Array.isArray(res.data) ? res.data : (res.data as any)?.results ?? [];
         setSubjects(data as { id: number; name: string }[]);
@@ -76,7 +84,7 @@ export default function StartSessionPage() {
     } else {
       setSubjects([]);
     }
-  }, [selectedCourse]);
+  }, [selectedCourse, courses]);
 
   useEffect(() => {
     const cr = classrooms.find((c) => c.id === selectedClassroom);

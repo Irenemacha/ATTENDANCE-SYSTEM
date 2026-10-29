@@ -25,7 +25,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
       .get<User>("/auth/me/")
       .then((response) => {
         const u = response.data;
-        if (!u.is_staff && !u.is_superuser && !u.groups.some((g) => g.toLowerCase() === "hod" || g.toLowerCase() === "lecturer")) {
+        if (!u.is_staff && !u.is_superuser) {
           clearSession();
           router.replace("/login");
           return;

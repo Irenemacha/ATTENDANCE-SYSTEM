@@ -14,7 +14,13 @@ from .views import (
 )
 from .views import session_history, session_history_detail
 from .views import lecturer_students, lecturer_scope
-from .hod_views import hod_dashboard, hod_students, hod_report, hod_courses
+from .hod_views import (
+    hod_dashboard,
+    hod_students,
+    hod_report,
+    hod_courses,
+    hod_upload_ledger,
+)
 
 urlpatterns = [
     # Lecturer session control
@@ -43,6 +49,7 @@ urlpatterns = [
     path('hod/students/', hod_students, name='hod_students'),
     path('hod/report/', hod_report, name='hod_report'),
     path('hod/courses/', hod_courses, name='hod_courses'),
+    path('hod/upload-ledger/', hod_upload_ledger, name='hod_upload_ledger'),
 
     # Session change history
     path('session-history/', session_history, name='session_history'),

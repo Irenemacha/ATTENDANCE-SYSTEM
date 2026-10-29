@@ -137,6 +137,22 @@ def subject_to_dict(subject):
     }
 
 
+def sync_student_course(student_user):
+    """Keep the Student profile's course in sync with StudentCourse rows."""
+    profile = getattr(student_user, "student", None)
+    if not profile:
+        return
+    enrollment = (
+        StudentCourse.objects.filter(student=student_user)
+        .select_related("course")
+        .order_by("id")
+        .first()
+    )
+    if enrollment and profile.course_id != enrollment.course_id:
+        profile.course = enrollment.course
+        profile.save(update_fields=["course"])
+
+
 def enrollment_to_dict(enrollment):
     student = enrollment.student
     profile = getattr(student, "student", None)
@@ -293,6 +309,7 @@ def assign_student_to_course(request):
         return Response({"detail": "Course not found."}, status=status.HTTP_404_NOT_FOUND)
 
     StudentCourse.objects.get_or_create(student=student, course=course)
+    sync_student_course(student)
     return Response({"message": "Student assigned successfully"})
 
 
@@ -616,6 +633,7 @@ def enrollment_list_create(request):
             {"detail": "Student is already enrolled in this course."},
             status=status.HTTP_400_BAD_REQUEST,
         )
+    sync_student_course(student)
     return Response(enrollment_to_dict(enrollment), status=status.HTTP_201_CREATED)
 
 
@@ -628,5 +646,7 @@ def enrollment_detail(request, pk):
     if not enrollment:
         return Response({"detail": "Enrollment not found."}, status=status.HTTP_404_NOT_FOUND)
 
+    student_user = enrollment.student
     enrollment.delete()
+    sync_student_course(student_user)
     return Response({"message": "Enrollment removed"}, status=status.HTTP_200_OK)

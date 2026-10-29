@@ -21,6 +21,7 @@ export type User = {
     email?: string;
     phone_number?: string | null;
     course?: string | null;
+    course_id?: number | null;
     department: string | null;
     department_id?: number | null;
     year_of_study?: number | null;
@@ -88,6 +89,7 @@ export type AdminReportSession = {
   present: number;
   late: number;
   absent: number;
+  attended: number;
   percentage: number;
 };
 

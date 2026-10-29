@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -13,6 +14,7 @@ from accounts.permissions import IsLecturer, IsStudent, IsAdminOrStaff
 from accounts.services import advance_user_state
 
 from courses.models import (
+    BLEBeacon,
     Course,
     Subject,
     Timetable,
@@ -93,20 +95,16 @@ def start_session(request):
     course_id = request.data.get("course_id")
     subject_id = request.data.get("subject_id")
     classroom_id = request.data.get("classroom_id")
-    is_override = request.data.get(
-        "is_override",
-         False
-    )
+    is_override = bool(request.data.get("is_override", False))
 
-    override_reason = request.data.get(
-        "override_reason"
-    )
-    
+    override_reason = (
+        request.data.get("override_reason") or ""
+    ).strip()
 
     latitude = request.data.get("latitude")
     longitude = request.data.get("longitude")
     radius = request.data.get("radius")
-    
+
     # ==============================
 # CHECK TIMETABLE
 # ==============================
@@ -122,13 +120,15 @@ def start_session(request):
     }
 
 
-    today = timezone.localtime().weekday()
+    now = timezone.localtime()
 
 
     timetable = Timetable.objects.filter(
     course_id=course_id,
     lecturer=user,
-    day=days[today]
+    day=days[now.weekday()],
+    start_time__lte=now.time(),
+    end_time__gte=now.time()
     ).first()
 
 
@@ -136,20 +136,11 @@ def start_session(request):
 
         return Response(
         {
-            "error": "No timetable found. Use override with reason if this is a postponed/replacement class."
+            "error": "No timetable found for this time slot. Use override if this is a postponed/replacement class."
         },
         status=400
     )
 
-
-    if is_override and not override_reason:
-
-        return Response(
-        {
-            "error": "Override reason is required"
-        },
-        status=400
-    )
 
     override_start = None
     override_end = None
@@ -202,8 +193,8 @@ def start_session(request):
                 datetime.combine(session_date, end_clock)
             )
 
-    # Fixed, explicit values for the current demo environment.
-    allowed_wifi = "ARUSOPASUANET"
+    # WiFi is optional and only enforced when the dashboard/client supplies it.
+    allowed_wifi = request.data.get("allowed_wifi_bssid") or None
     
 
 
@@ -272,24 +263,73 @@ def start_session(request):
         )
 
 
-    # Lecturer subject permission
+    # Lecturer subject permission. When an admin has configured
+    # subject-level assignments for this course they are enforced; otherwise
+    # the course assignment is enough, matching what the dashboard displays.
 
     if not user.is_staff and not user.is_superuser:
 
-        allowed_subject = LecturerSubject.objects.filter(
+        has_subject_assignments = LecturerSubject.objects.filter(
             lecturer=user,
-            subject=subject
+            subject__course_id=course_id
         ).exists()
 
-
-        if not allowed_subject:
+        if has_subject_assignments and not LecturerSubject.objects.filter(
+            lecturer=user,
+            subject=subject
+        ).exists():
             return Response(
                 {
                     "error": "You are not allowed to teach this subject"
                 },
                 status=403
             )
-     
+
+    # Geofence values come from the dashboard when supplied, otherwise the
+    # classroom defaults are used.
+
+    try:
+        session_latitude = (
+            float(latitude) if latitude not in (None, "") else classroom.latitude
+        )
+        session_longitude = (
+            float(longitude) if longitude not in (None, "") else classroom.longitude
+        )
+        session_radius = (
+            int(float(radius)) if radius not in (None, "") else classroom.radius_meters
+        )
+    except (TypeError, ValueError):
+        return Response(
+            {
+                "error": "latitude, longitude and radius must be numbers"
+            },
+            status=400
+        )
+
+    if session_latitude is None or session_longitude is None:
+        return Response(
+            {
+                "error": "This classroom has no GPS coordinates. Set them before starting a session."
+            },
+            status=400
+        )
+
+    if not -90 <= session_latitude <= 90 or not -180 <= session_longitude <= 180:
+        return Response(
+            {
+                "error": "Invalid GPS coordinates"
+            },
+            status=400
+        )
+
+    if session_radius <= 0:
+        return Response(
+            {
+                "error": "Geofence radius must be greater than zero"
+            },
+            status=400
+        )
+
     session = AttendanceSession.objects.create(
 
     lecturer=user,
@@ -302,11 +342,11 @@ def start_session(request):
 
     timetable=timetable,
 
-    latitude=classroom.latitude,
+    latitude=session_latitude,
 
-    longitude=classroom.longitude,
+    longitude=session_longitude,
 
-    radius_meters=classroom.radius_meters,
+    radius_meters=session_radius,
 
     allowed_wifi_bssid=allowed_wifi,
 
@@ -351,7 +391,7 @@ def start_session(request):
         actual_end=session.end_time,
     )
 
-    students = Student.objects.all()
+    students = Student.objects.filter(course_id=course_id)
 
     for student in students:
         Notification.objects.create(
@@ -429,8 +469,18 @@ def check_in(request):
     )
 
 
-    expected_beacon = session.classroom.beacon
+    expected_beacon = (
+        BLEBeacon.objects.filter(classroom=session.classroom).first()
+        if session.classroom else None
+    )
 
+    if not expected_beacon:
+        return Response(
+        {
+            "error": "No BLE beacon assigned to this classroom"
+        },
+        status=403
+    )
 
     if beacon_id != expected_beacon.beacon_id:
 
@@ -445,17 +495,6 @@ def check_in(request):
 
 
 
-    if not session:
-
-        return Response(
-            {
-                "error": "Active session not found"
-            },
-            status=404
-        )
-
-
-
     state, _ = UserSessionState.objects.get_or_create(
     user=user
     )
@@ -463,6 +502,14 @@ def check_in(request):
 
 
     # GPS validation
+
+    if latitude is None or longitude is None:
+        return Response(
+            {
+                "error": "Location is required for check-in"
+            },
+            status=400
+        )
 
     distance = calculate_distance(
 
@@ -490,21 +537,6 @@ def check_in(request):
     # consistent with the Flutter validation flow.
     if session.allowed_wifi_bssid and wifi_bssid != session.allowed_wifi_bssid:
         return Response({"error": "Unauthorized WiFi network"}, status=403)
-
-    # BLE classroom validation
-
-    if session.classroom:
-
-       expected_beacon = session.classroom.beacon
-
-    if beacon_id != expected_beacon.beacon_id:
-
-        return Response(
-            {
-                "error": "Wrong classroom BLE beacon detected"
-            },
-            status=403
-        )
 
         # fingerprint verification
 
@@ -669,6 +701,14 @@ def check_out(request):
 
     # GPS validation
 
+    if latitude is None or longitude is None:
+        return Response(
+            {
+                "error": "Location is required for checkout"
+            },
+            status=400
+        )
+
     distance = calculate_distance(
 
         latitude,
@@ -719,7 +759,7 @@ def check_out(request):
     )
 
 
-    expected_beacon = session.classroom.beacon
+    expected_beacon = BLEBeacon.objects.filter(classroom=session.classroom).first()
 
 
     if not expected_beacon:
@@ -1615,6 +1655,14 @@ def admin_report(request):
     if day:
         sessions = sessions.filter(date=day)
 
+    start_date = parse_date(request.query_params.get("start_date") or "")
+    if start_date:
+        sessions = sessions.filter(date__gte=start_date)
+
+    end_date = parse_date(request.query_params.get("end_date") or "")
+    if end_date:
+        sessions = sessions.filter(date__lte=end_date)
+
     result = []
     total_records = 0
     total_present = 0
@@ -1753,15 +1801,25 @@ def session_history_detail(request, session_id):
 def lecturer_scope(request):
     """Courses (with subjects) the lecturer is assigned to, for report filters."""
     user = request.user
-    if user.is_staff and user.is_superuser:
+    if user.is_staff or user.is_superuser:
         courses = Course.objects.all().order_by("name")
     else:
         courses = Course.objects.filter(
             lecturercourse__lecturer=user
         ).distinct().order_by("name")
 
-    return Response([
-        {
+    payload = []
+    for course in courses:
+        subjects = Subject.objects.filter(course=course).order_by("name")
+        if not (user.is_staff or user.is_superuser):
+            assigned = LecturerSubject.objects.filter(
+                lecturer=user,
+                subject__course=course
+            )
+            if assigned.exists():
+                subjects = subjects.filter(id__in=assigned.values("subject_id"))
+
+        payload.append({
             "id": course.id,
             "name": course.name,
             "code": course.code,
@@ -1771,11 +1829,11 @@ def lecturer_scope(request):
                     "name": subject.name,
                     "code": subject.code,
                 }
-                for subject in Subject.objects.filter(course=course).order_by("name")
+                for subject in subjects
             ],
-        }
-        for course in courses
-    ])
+        })
+
+    return Response(payload)
 
 
 @api_view(["GET"])

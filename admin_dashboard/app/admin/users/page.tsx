@@ -12,7 +12,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Table, Td, Th } from "@/components/ui/table";
-import { api, Department, Group, User } from "@/lib/api";
+import { api, Course, Department, Group, User } from "@/lib/api";
 
 type UserForm = {
   username: string;
@@ -23,6 +23,9 @@ type UserForm = {
   is_staff: boolean;
   groups: string[];
   department_id: number | "";
+  reg_number: string;
+  course_id: number | "";
+  year_of_study: string;
 };
 
 const emptyForm: UserForm = {
@@ -34,12 +37,16 @@ const emptyForm: UserForm = {
   is_staff: false,
   groups: [],
   department_id: "",
+  reg_number: "",
+  course_id: "",
+  year_of_study: "",
 };
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [count, setCount] = useState(0);
@@ -53,6 +60,7 @@ export default function UsersPage() {
     load();
     api.get<Group[]>("/user-management/groups/").then((response) => setGroups(response.data));
     api.get<Department[]>("/departments/").then((response) => setDepartments(response.data)).catch(() => setDepartments([]));
+    api.get<Course[]>("/courses/").then((response) => setCourses(Array.isArray(response.data) ? response.data : (response.data as any)?.results ?? [])).catch(() => setCourses([]));
   }, [page, search]);
 
   async function load() {
@@ -83,18 +91,42 @@ export default function UsersPage() {
       is_staff: user.is_staff,
       groups: user.groups,
       department_id: user.profile?.department_id ?? "",
+      reg_number: user.profile?.reg_number ?? "",
+      course_id: user.profile?.course_id ?? "",
+      year_of_study: user.profile?.year_of_study ? String(user.profile.year_of_study) : "",
     });
     setError("");
     setFormOpen(true);
   }
 
+  const isStudent = form.groups.some((name) => name.toLowerCase() === "student");
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError("");
+    if (!editing && !form.password) {
+      setError("Password is required when creating a user.");
+      return;
+    }
+    if (
+      isStudent &&
+      (!form.reg_number.trim() || form.course_id === "" || !form.year_of_study)
+    ) {
+      setError("Registration number, course and year of study are required for Student users.");
+      return;
+    }
     try {
       const departmentId: number | null = form.department_id === "" ? null : form.department_id;
-      const { department_id: _dept, ...base } = form;
-      const payload: Record<string, unknown> = { ...base, department_id: departmentId };
+      const courseId: number | null = form.course_id === "" ? null : Number(form.course_id);
+      const yearOfStudy: number | null = form.year_of_study === "" ? null : Number(form.year_of_study);
+      const { department_id: _dept, reg_number, course_id: _course, year_of_study: _year, ...base } = form;
+      const payload: Record<string, unknown> = {
+        ...base,
+        department_id: departmentId,
+        course_id: courseId,
+        year_of_study: yearOfStudy,
+        reg_number: reg_number.trim(),
+      };
       if (editing) {
         if (!payload.password) delete payload.password;
         await api.patch(`/user-management/users/${editing.id}/`, payload);
@@ -270,6 +302,48 @@ export default function UsersPage() {
                 </Button>
               ))}
             </div>
+            {isStudent && (
+              <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Student profile
+                </p>
+                <Input
+                  placeholder="Registration number"
+                  value={form.reg_number}
+                  onChange={(event) => setForm({ ...form, reg_number: event.target.value })}
+                />
+                <label className="grid gap-1.5 text-sm">
+                  <span className="text-muted-foreground">Course</span>
+                  <select
+                    className="flex h-10 rounded-xl border bg-background px-3 text-sm"
+                    value={form.course_id === "" ? "" : String(form.course_id)}
+                    onChange={(event) =>
+                      setForm({ ...form, course_id: event.target.value === "" ? "" : Number(event.target.value) })
+                    }
+                  >
+                    <option value="">Select course</option>
+                    {courses.map((course) => (
+                      <option key={course.id} value={course.id}>
+                        {course.name} ({course.code})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="grid gap-1.5 text-sm">
+                  <span className="text-muted-foreground">Year of study</span>
+                  <select
+                    className="flex h-10 rounded-xl border bg-background px-3 text-sm"
+                    value={form.year_of_study}
+                    onChange={(event) => setForm({ ...form, year_of_study: event.target.value })}
+                  >
+                    <option value="">Select year</option>
+                    {[1, 2, 3, 4, 5, 6].map((year) => (
+                      <option key={year} value={year}>{year}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
             {error && <p className="text-sm text-destructive">{error}</p>}
             <Button>{editing ? "Save changes" : "Create user"}</Button>
           </form>

@@ -18,6 +18,7 @@ export default function AdminReportsPage() {
   const [overview, setOverview] = useState<AdminReportOverview | null>(null);
   const [sessions, setSessions] = useState<AdminReportSession[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [lecturers, setLecturers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [courseFilter, setCourseFilter] = useState("");
@@ -27,30 +28,45 @@ export default function AdminReportsPage() {
 
   useEffect(() => {
     Promise.all([
-      api.get<{ overview: AdminReportOverview; sessions: AdminReportSession[] }>("/attendance/admin-report/").catch(() => null),
       api.get<Course[]>("/courses/").catch(() => ({ data: [] })),
       api.get<{ results?: User[] }>("/user-management/users/?group=Lecturer&page_size=100").catch(() => ({ data: { results: [] } })),
-    ]).then(([report, c]) => {
-      if (report?.data) {
-        setOverview(report.data.overview);
-        setSessions(report.data.sessions ?? []);
-      }
+    ]).then(([c, l]) => {
       setCourses(Array.isArray(c.data) ? c.data : (c.data as any)?.results ?? []);
-      setLoading(false);
+      setLecturers(Array.isArray(l.data) ? l.data : (l.data as any)?.results ?? []);
     });
   }, []);
 
-  const filtered = sessions.filter((s) => {
-    const day = s.date?.slice(0, 10) ?? "";
-    if (startDate && day < startDate) return false;
-    if (endDate && day > endDate) return false;
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (courseFilter) params.set("course_id", courseFilter);
+    if (lecturerFilter) params.set("lecturer_id", lecturerFilter);
+    if (startDate) params.set("start_date", startDate);
+    if (endDate) params.set("end_date", endDate);
 
+    setLoading(true);
+    api
+      .get<{ overview: AdminReportOverview; sessions: AdminReportSession[] }>(
+        `/attendance/admin-report/?${params.toString()}`
+      )
+      .then((report) => {
+        setOverview(report.data.overview);
+        setSessions(report.data.sessions ?? []);
+      })
+      .catch(() => {
+        setOverview(null);
+        setSessions([]);
+      })
+      .finally(() => setLoading(false));
+  }, [courseFilter, lecturerFilter, startDate, endDate]);
+
+  const filtered = sessions.filter((s) => {
     const query = search.trim().toLowerCase();
+    if (!query) return true;
+
     const pct = String(s.percentage);
     const rawDate = s.date?.toLowerCase() ?? "";
     const prettyDate = formatDate(s.date).toLowerCase();
-    const matchesSearch =
-      !query ||
+    return (
       s.course.toLowerCase().includes(query) ||
       s.subject.toLowerCase().includes(query) ||
       s.lecturer.toLowerCase().includes(query) ||
@@ -58,10 +74,8 @@ export default function AdminReportsPage() {
       rawDate.includes(query) ||
       prettyDate.includes(query) ||
       pct === query ||
-      `${pct}%` === query;
-    const matchesCourse = !courseFilter || s.course_code === courseFilter;
-    const matchesLecturer = !lecturerFilter || s.lecturer === lecturerFilter;
-    return matchesSearch && matchesCourse && matchesLecturer;
+      `${pct}%` === query
+    );
   });
 
   function formatDate(dateStr: string) {
@@ -72,9 +86,9 @@ export default function AdminReportsPage() {
 
   function downloadCSV() {
     const csv = [
-      ["Course", "Subject", "Lecturer", "Date", "Total", "Present", "Late", "Absent", "Percentage"],
+      ["Course", "Subject", "Lecturer", "Date", "Total", "Present", "Attended", "Late", "Absent", "Percentage"],
       ...filtered.map((s) => [
-        s.course, s.subject, s.lecturer, s.date, s.total, s.present, s.late, s.absent, s.percentage,
+        s.course, s.subject, s.lecturer, s.date, s.total, s.present, s.attended, s.late, s.absent, s.percentage,
       ]),
     ].map((row) => row.join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
@@ -112,7 +126,7 @@ export default function AdminReportsPage() {
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard label="Total Sessions" value={overview.total_sessions} icon={LineChart} />
           <StatCard label="Active Sessions" value={overview.active_sessions} icon={LineChart} />
-          <StatCard label="Attendance Records" value={overview.total_records} icon={LineChart} />
+          <StatCard label="Expected Attendance" value={overview.total_records} icon={LineChart} />
           <StatCard label="Overall Attendance" value={`${overview.overall_percentage}%`} icon={LineChart} />
         </div>
       )}
@@ -137,7 +151,7 @@ export default function AdminReportsPage() {
             >
               <option value="">All courses</option>
               {courses.map((c) => (
-                <option key={c.id} value={c.code}>{c.name} ({c.code})</option>
+                <option key={c.id} value={c.id}>{c.name} ({c.code})</option>
               ))}
             </select>
             <select
@@ -146,8 +160,10 @@ export default function AdminReportsPage() {
               onChange={(e) => setLecturerFilter(e.target.value)}
             >
               <option value="">All lecturers</option>
-              {[...new Set(sessions.map((s) => s.lecturer))].map((name) => (
-                <option key={name} value={name}>{name}</option>
+              {lecturers.map((lecturer) => (
+                <option key={lecturer.id} value={lecturer.id}>
+                  {lecturer.full_name || lecturer.username}
+                </option>
               ))}
             </select>
             <input
@@ -182,6 +198,7 @@ export default function AdminReportsPage() {
                   <Th>Date</Th>
                   <Th>Total</Th>
                   <Th>Present</Th>
+                  <Th>Attended</Th>
                   <Th>Late</Th>
                   <Th>Absent</Th>
                   <Th>%</Th>
@@ -199,6 +216,7 @@ export default function AdminReportsPage() {
                     <Td>{formatDate(s.date)}</Td>
                     <Td>{s.total}</Td>
                     <Td><Badge className="bg-emerald-50 text-emerald-700">{s.present}</Badge></Td>
+                    <Td><Badge className="bg-sky-50 text-sky-700">{s.attended}</Badge></Td>
                     <Td><Badge className="bg-amber-50 text-amber-700">{s.late}</Badge></Td>
                     <Td><Badge className="bg-red-50 text-red-700">{s.absent}</Badge></Td>
                     <Td>

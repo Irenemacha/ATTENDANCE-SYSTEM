@@ -1,6 +1,10 @@
 # =========================
 # IMPORTS (TOP OF FILE)
 # =========================
+import os
+
+from django.core.files.storage import default_storage
+from django.utils import timezone
 from django.utils.dateparse import parse_date
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -298,3 +302,34 @@ def hod_report(request):
             ),
         },
     })
+
+# =========================
+# HOD LEDGER UPLOAD
+# =========================
+LEDGER_EXTENSIONS = {".xlsx", ".xls", ".csv"}
+
+
+@api_view(["POST"])
+@permission_classes([IsHOD])
+def hod_upload_ledger(request):
+    upload = request.FILES.get("file")
+    if not upload:
+        return Response({"detail": "file is required."}, status=400)
+
+    extension = os.path.splitext(upload.name)[1].lower()
+    if extension not in LEDGER_EXTENSIONS:
+        return Response(
+            {"detail": "Only .xlsx, .xls or .csv files are supported."},
+            status=400,
+        )
+
+    folder = f"ledgers/{timezone.localdate():%Y/%m/%d}"
+    saved_path = default_storage.save(f"{folder}/{upload.name}", upload)
+
+    return Response(
+        {
+            "message": "Ledger uploaded successfully.",
+            "file": saved_path,
+        },
+        status=201,
+    )

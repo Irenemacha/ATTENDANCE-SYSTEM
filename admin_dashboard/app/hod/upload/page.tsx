@@ -22,9 +22,8 @@ export default function HODUploadPage() {
     try {
       const form = new FormData();
       form.append("file", file);
-      // The ERP integration endpoint - adjust as needed
-      await api.post("/students/dashboard/", form);
-      setSuccess("Ledger uploaded successfully to the ERP system.");
+      await api.post("/attendance/hod/upload-ledger/", form);
+      setSuccess("Ledger uploaded successfully.");
       setFile(null);
     } catch {
       setError("Upload failed. Check the file format and try again.");
