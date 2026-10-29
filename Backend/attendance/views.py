@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from rest_framework.decorators import api_view, permission_classes
@@ -20,7 +21,8 @@ from courses.models import (
     Timetable,
     LecturerCourse,
     LecturerSubject,
-    Classroom
+    Classroom,
+    StudentCourse,
 )
 
 from students.models import Student
@@ -1891,7 +1893,18 @@ def lecturer_students(request):
 
     session_list = list(sessions)
 
-    students = Student.objects.filter(course=course).select_related("course")
+    enrolled_user_ids = StudentCourse.objects.filter(course=course).values_list(
+        "student_id", flat=True
+    )
+
+    students = (
+        Student.objects.filter(
+            Q(course=course) | Q(user_id__in=enrolled_user_ids)
+        )
+        .select_related("course")
+        .distinct()
+        .order_by("full_name")
+    )
 
     rows = []
     for student in students:

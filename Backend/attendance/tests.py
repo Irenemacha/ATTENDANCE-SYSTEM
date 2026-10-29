@@ -8,7 +8,14 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from courses.models import Classroom, Course, Department, Subject
+from courses.models import (
+    Classroom,
+    Course,
+    Department,
+    LecturerCourse,
+    StudentCourse,
+    Subject,
+)
 from students.models import Student
 
 from .models import Attendance, AttendanceSession
@@ -455,6 +462,53 @@ class ActiveSessionPercentageTests(TestCase):
         self.client.force_authenticate(user=outsider)
         response = self.client.get("/api/attendance/active-session/")
         self.assertEqual(response.status_code, 403)
+
+
+class LecturerStudentAttendanceTests(TestCase):
+    def setUp(self):
+        department = Department.objects.create(name="CS")
+        self.course = Course.objects.create(
+            name="BSc", code="CS01", department=department
+        )
+        self.other_course = Course.objects.create(
+            name="BIT", code="BIT01", department=department
+        )
+        lecturer_group = Group.objects.create(name="Lecturer")
+        self.lecturer = User.objects.create_user(
+            username="lect1", password="pass"
+        )
+        self.lecturer.groups.add(lecturer_group)
+        LecturerCourse.objects.create(lecturer=self.lecturer, course=self.course)
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.lecturer)
+
+    def make_student(self, username, reg_number, full_name, course):
+        user = User.objects.create_user(username=username, password="pass")
+        return Student.objects.create(
+            user=user,
+            reg_number=reg_number,
+            full_name=full_name,
+            email=f"{username}@example.com",
+            course=course,
+            year_of_study=1,
+        )
+
+    def test_includes_students_enrolled_in_course(self):
+        self.make_student("stud1", "S001", "Stella Student", self.course)
+        enrolled = self.make_student(
+            "stud2", "S002", "Enrolled Student", self.other_course
+        )
+        StudentCourse.objects.create(student=enrolled.user, course=self.course)
+        self.make_student("stud3", "S003", "Outsider Student", self.other_course)
+
+        response = self.client.get(
+            f"/api/attendance/lecturer/students/?course_id={self.course.id}"
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        registrations = {row["registration"] for row in response.data["students"]}
+        self.assertEqual(registrations, {"S001", "S002"})
+        self.assertEqual(response.data["summary"]["total_students"], 2)
 
 
 class HodLedgerUploadTests(TestCase):
