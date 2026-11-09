@@ -104,22 +104,4 @@ class AttendanceService {
       "data": _decode(response.body),
     };
   }
-
-  Future<Map<String, dynamic>> markAttendance({required int sessionId}) async {
-    final token = await StorageService.getToken();
-    final response = await http.post(
-      Uri.parse("${ApiConstants.baseUrl}attendance/mark/"),
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer $token",
-      },
-      body: jsonEncode({"session_id": sessionId}),
-    );
-
-    return {
-      "success": response.statusCode >= 200 && response.statusCode < 300,
-      "statusCode": response.statusCode,
-      "data": _decode(response.body),
-    };
-  }
 }

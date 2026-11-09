@@ -55,7 +55,6 @@ def api_root(request):
         "attendance": {
             "check_in": "/api/attendance/check-in/",
             "check_out": "/api/attendance/check-out/",
-            "mark": "/api/attendance/mark/",
             "start_session": "/api/attendance/start-session/",
             "end_session": "/api/attendance/end-session/",
             "report": "/api/attendance/report/",
@@ -107,25 +106,18 @@ def me(request):
 @permission_classes([AllowAny])
 def device_login(request):
     username = request.data.get("username")
-    user = User.objects.get(username=username)
     password = request.data.get("password")
     device_id = request.data.get("device_id")
 
+    if not username or not password:
+        return Response(
+            {"error": "Username and password are required"}, status=400
+        )
+
     user = User.objects.filter(username=username).first()
 
-    print("========== LOGIN DEBUG ==========")
-    print("USERNAME RECEIVED:", username)
-    print("PASSWORD RECEIVED:", password)
-    print("USER FOUND:", user)
-
-    if user:
-        print("PASSWORD CHECK:", user.check_password(password))
-
     if not user or not user.check_password(password):
-        print("LOGIN FAILED HERE")
         return Response({"error": "Invalid credentials"}, status=400)
-
-    print("LOGIN PASSED PASSWORD CHECK")
 
     if not device_id:
         return Response({"error": "Device ID required"}, status=400)

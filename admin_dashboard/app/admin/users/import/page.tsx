@@ -11,6 +11,7 @@ import { api } from "@/lib/api";
 export default function ImportPage() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<Record<string, unknown>[] | null>(null);
+  const [previewErrors, setPreviewErrors] = useState<Record<string, unknown>[]>([]);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
@@ -24,7 +25,12 @@ export default function ImportPage() {
     form.append("file", file);
     try {
       const response = await api.post("/user-management/users/import/preview/", form);
-      setPreview(response.data as Record<string, unknown>[]);
+      const payload = response.data as {
+        rows?: Record<string, unknown>[];
+        errors?: Record<string, unknown>[];
+      };
+      setPreview(Array.isArray(payload) ? payload : payload.rows ?? []);
+      setPreviewErrors(Array.isArray(payload) ? [] : payload.errors ?? []);
     } catch {
       setError("Failed to preview file. Check format.");
     } finally {
@@ -78,6 +84,12 @@ export default function ImportPage() {
           <Card className="border-slate-200 shadow-sm">
             <CardHeader><CardTitle>Preview ({preview.length} rows)</CardTitle></CardHeader>
             <CardContent>
+              {previewErrors.length > 0 && (
+                <div className="mb-4 flex items-start gap-2 text-sm text-destructive">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <pre className="max-h-40 overflow-auto whitespace-pre-wrap">{JSON.stringify(previewErrors, null, 2)}</pre>
+                </div>
+              )}
               <div className="overflow-x-auto text-sm">
                 <pre className="max-h-96 overflow-auto rounded bg-muted p-4">{JSON.stringify(preview.slice(0, 10), null, 2)}</pre>
               </div>

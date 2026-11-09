@@ -175,9 +175,6 @@ class _MainShellScreenState extends State<MainShellScreen>
 
   Future<void> refreshSessionStatus({bool showSnack = true}) async {
     final result = await attendanceService.getActiveSession();
-    distanceFromClassroom =
-    (result['distance'] as num?)?.toDouble();
-    print(result);
     if (!mounted) return;
 
     if (result['success'] != true) {
@@ -190,6 +187,7 @@ class _MainShellScreenState extends State<MainShellScreen>
     }
 
     final data = Map<String, dynamic>.from(result['data'] ?? {});
+    distanceFromClassroom = (data['distance'] as num?)?.toDouble();
     final hasSession = data['session_id'] != null;
     setState(() {
       activeSession = hasSession ? data : null;
