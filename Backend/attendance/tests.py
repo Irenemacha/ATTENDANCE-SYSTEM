@@ -95,23 +95,54 @@ class OverrideTimeTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("HH:MM", response.data["error"])
 
-    def test_override_requires_times(self):
+    def test_override_defaults_times_when_missing(self):
+        before = timezone.localtime()
         response = self.client.post(
             "/api/attendance/start-session/",
             self.payload(start_time="", end_time=""),
             format="json",
         )
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("required", response.data["error"].lower())
+        self.assertEqual(response.status_code, 201, response.data)
 
-    def test_override_requires_end_time(self):
+        session = AttendanceSession.objects.get(id=response.data["session_id"])
+        self.assertGreaterEqual(timezone.localtime(session.start_time), before)
+        self.assertEqual(session.override_duration_minutes, 120)
+        self.assertEqual(
+            session.end_time - session.start_time, timedelta(minutes=120)
+        )
+
+    def test_override_defaults_end_time_when_missing(self):
         response = self.client.post(
             "/api/attendance/start-session/",
             self.payload(start_time="09:00", end_time=""),
             format="json",
         )
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("required", response.data["error"].lower())
+        self.assertEqual(response.status_code, 201, response.data)
+
+        session = AttendanceSession.objects.get(id=response.data["session_id"])
+        self.assertEqual(
+            timezone.localtime(session.start_time).strftime("%H:%M"), "09:00"
+        )
+        self.assertEqual(session.override_duration_minutes, 120)
+        self.assertEqual(
+            session.end_time - session.start_time, timedelta(minutes=120)
+        )
+
+    def test_override_defaults_start_time_when_missing(self):
+        end_clock = (timezone.localtime() + timedelta(minutes=30)).strftime("%H:%M")
+        if end_clock <= timezone.localtime().strftime("%H:%M"):
+            self.skipTest("Test window would cross midnight")
+        response = self.client.post(
+            "/api/attendance/start-session/",
+            self.payload(start_time="", end_time=end_clock),
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+
+        session = AttendanceSession.objects.get(id=response.data["session_id"])
+        self.assertEqual(
+            timezone.localtime(session.end_time).strftime("%H:%M"), end_clock
+        )
 
     def test_override_without_reason_allowed(self):
         data = self.payload()

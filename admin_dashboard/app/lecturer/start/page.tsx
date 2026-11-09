@@ -123,18 +123,14 @@ export default function StartSessionPage() {
           setOverrideStartTime(startTime);
           setOverrideEndTime(endTime);
         }
-        if (!startTime || !endTime) {
-          setError("Start time and end time are required for an override.");
-          return;
-        }
-        if (endTime <= startTime) {
+        if (startTime && endTime && endTime <= startTime) {
           setError("End time must be after start time.");
           return;
         }
         payload.is_override = true;
         payload.override_reason = overrideReason;
-        payload.start_time = startTime;
-        payload.end_time = endTime;
+        if (startTime) payload.start_time = startTime;
+        if (endTime) payload.end_time = endTime;
       }
       await api.post("/attendance/start-session/", payload);
       router.push("/lecturer/sessions");

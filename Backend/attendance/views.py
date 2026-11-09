@@ -152,46 +152,54 @@ def start_session(request):
         start_raw = request.data.get("start_time")
         end_raw = request.data.get("end_time")
 
-        if not start_raw or not end_raw:
+        start_clock = None
+        end_clock = None
 
-            return Response(
-                {
-                    "error": "Start time and end time are required for an override"
-                },
-                status=400
+        if start_raw:
+            try:
+                start_clock = datetime.strptime(str(start_raw), "%H:%M").time()
+            except ValueError:
+                return Response(
+                    {
+                        "error": "Invalid time format. Use HH:MM (24-hour)."
+                    },
+                    status=400
+                )
+
+        if end_raw:
+            try:
+                end_clock = datetime.strptime(str(end_raw), "%H:%M").time()
+            except ValueError:
+                return Response(
+                    {
+                        "error": "Invalid time format. Use HH:MM (24-hour)."
+                    },
+                    status=400
+                )
+
+        session_date = timezone.localdate()
+
+        if start_clock:
+            override_start = timezone.make_aware(
+                datetime.combine(session_date, start_clock)
             )
+        else:
+            override_start = timezone.localtime()
 
-        try:
-            start_clock = datetime.strptime(str(start_raw), "%H:%M").time()
-            end_clock = datetime.strptime(str(end_raw), "%H:%M").time()
-
-        except ValueError:
-
-            return Response(
-                {
-                    "error": "Invalid time format. Use HH:MM (24-hour)."
-                },
-                status=400
+        if end_clock:
+            override_end = timezone.make_aware(
+                datetime.combine(session_date, end_clock)
             )
+        else:
+            override_end = override_start + timedelta(minutes=120)
 
-        if end_clock <= start_clock:
-
+        if override_end <= override_start:
             return Response(
                 {
                     "error": "End time must be after start time"
                 },
                 status=400
             )
-
-        session_date = timezone.localdate()
-
-        override_start = timezone.make_aware(
-            datetime.combine(session_date, start_clock)
-        )
-
-        override_end = timezone.make_aware(
-            datetime.combine(session_date, end_clock)
-        )
 
     # WiFi is optional and only enforced when the dashboard/client supplies it.
     allowed_wifi = request.data.get("allowed_wifi_bssid") or None
