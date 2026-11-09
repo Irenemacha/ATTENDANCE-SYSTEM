@@ -53,8 +53,8 @@ export default function StartSessionPage() {
     setOverrideTimesEdited(false);
     if (checked) {
       const { start, end } = defaultOverrideTimes();
-      setOverrideStartTime((prev) => prev || start);
-      setOverrideEndTime((prev) => prev || end);
+      setOverrideStartTime(start);
+      setOverrideEndTime(end);
     }
   }
 
