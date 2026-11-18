@@ -34,7 +34,7 @@ class AttendanceSession(models.Model):
     )
 
     date = models.DateField(default=timezone.now)
-    start_time = models.DateTimeField(auto_now_add=True)
+    start_time = models.DateTimeField(default=timezone.now)
     end_time = models.DateTimeField(null=True, blank=True)
     
     ended_at = models.DateTimeField(

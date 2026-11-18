@@ -542,6 +542,167 @@ class LecturerStudentAttendanceTests(TestCase):
         self.assertEqual(response.data["summary"]["total_students"], 2)
 
 
+class AdminStudentAttendanceTests(TestCase):
+    def setUp(self):
+        department = Department.objects.create(name="CS")
+        self.course = Course.objects.create(
+            name="BSc", code="CS01", department=department
+        )
+        self.other_course = Course.objects.create(
+            name="BIT", code="BIT01", department=department
+        )
+        self.subject = Subject.objects.create(
+            name="Algebra", code="CS101", course=self.course
+        )
+        other_subject = Subject.objects.create(
+            name="Programming", code="BIT101", course=self.other_course
+        )
+        self.lecturer = User.objects.create_user(
+            username="lect1", password="pass", is_staff=True
+        )
+        self.admin = User.objects.create_user(
+            username="admin", password="pass", is_staff=True
+        )
+
+        def make_student(username, reg_number, full_name, course):
+            user = User.objects.create_user(username=username, password="pass")
+            return Student.objects.create(
+                user=user,
+                reg_number=reg_number,
+                full_name=full_name,
+                email=f"{username}@example.com",
+                course=course,
+                year_of_study=1,
+            )
+
+        self.student_one = make_student(
+            "stud1", "S001", "Stella Student", self.course
+        )
+        self.student_two = make_student(
+            "stud2", "S002", "Brian Student", self.course
+        )
+        self.student_three = make_student(
+            "stud3", "S003", "Carol Student", self.other_course
+        )
+
+        self.session_one = AttendanceSession.objects.create(
+            lecturer=self.lecturer,
+            course=self.course,
+            subject=self.subject,
+            date=timezone.localdate() - timedelta(days=1),
+            latitude=0.0,
+            longitude=0.0,
+        )
+        self.session_two = AttendanceSession.objects.create(
+            lecturer=self.lecturer,
+            course=self.course,
+            subject=self.subject,
+            date=timezone.localdate(),
+            latitude=0.0,
+            longitude=0.0,
+        )
+        self.other_session = AttendanceSession.objects.create(
+            lecturer=self.lecturer,
+            course=self.other_course,
+            subject=other_subject,
+            date=timezone.localdate() - timedelta(days=1),
+            latitude=0.0,
+            longitude=0.0,
+        )
+
+        Attendance.objects.create(
+            student=self.student_one,
+            session=self.session_one,
+            status="PRESENT",
+            check_in_time=timezone.now(),
+        )
+        Attendance.objects.create(
+            student=self.student_one,
+            session=self.session_two,
+            status="ABSENT",
+        )
+        Attendance.objects.create(
+            student=self.student_two,
+            session=self.session_one,
+            status="PRESENT",
+            check_in_time=timezone.now(),
+        )
+        Attendance.objects.create(
+            student=self.student_two,
+            session=self.session_two,
+            status="LATE",
+            check_in_time=timezone.now(),
+        )
+        Attendance.objects.create(
+            student=self.student_three,
+            session=self.other_session,
+            status="PRESENT",
+            check_in_time=timezone.now(),
+        )
+
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.admin)
+
+    def test_returns_percentage_for_every_student(self):
+        response = self.client.get("/api/attendance/admin/students/")
+        self.assertEqual(response.status_code, 200, response.data)
+
+        rows = {row["registration"]: row for row in response.data["students"]}
+        self.assertEqual(rows["S001"]["attended"], 1)
+        self.assertEqual(rows["S001"]["total_sessions"], 2)
+        self.assertEqual(rows["S001"]["percentage"], 50.0)
+        self.assertEqual(rows["S001"]["status"], "Critical")
+        self.assertEqual(rows["S002"]["percentage"], 100.0)
+        self.assertEqual(rows["S002"]["status"], "Fine")
+        self.assertEqual(rows["S003"]["course"], "BIT")
+        self.assertEqual(rows["S003"]["percentage"], 100.0)
+
+        summary = response.data["summary"]
+        self.assertEqual(summary["total_students"], 3)
+        self.assertEqual(summary["total_sessions"], 3)
+        self.assertEqual(summary["average_percentage"], 83.33)
+        self.assertEqual(summary["critical_students"], 1)
+
+    def test_filters_by_course(self):
+        response = self.client.get(
+            f"/api/attendance/admin/students/?course_id={self.course.id}"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+
+        registrations = {
+            row["registration"] for row in response.data["students"]
+        }
+        self.assertEqual(registrations, {"S001", "S002"})
+        self.assertEqual(response.data["summary"]["total_sessions"], 2)
+        self.assertEqual(response.data["summary"]["average_percentage"], 75.0)
+
+    def test_filters_by_date(self):
+        response = self.client.get(
+            "/api/attendance/admin/students/"
+            f"?start_date={timezone.localdate().isoformat()}"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+
+        rows = {row["registration"]: row for row in response.data["students"]}
+        self.assertEqual(rows["S001"]["attended"], 0)
+        self.assertEqual(rows["S001"]["total_sessions"], 1)
+        self.assertEqual(rows["S002"]["attended"], 1)
+        self.assertEqual(rows["S003"]["total_sessions"], 0)
+        self.assertEqual(response.data["summary"]["total_sessions"], 1)
+
+    def test_rejects_subject_from_another_course(self):
+        response = self.client.get(
+            "/api/attendance/admin/students/"
+            f"?course_id={self.course.id}&subject_id=9999"
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_requires_admin(self):
+        self.client.force_authenticate(user=self.student_one.user)
+        response = self.client.get("/api/attendance/admin/students/")
+        self.assertEqual(response.status_code, 403)
+
+
 class HodLedgerUploadTests(TestCase):
     def setUp(self):
         hod_group = Group.objects.create(name="HOD")

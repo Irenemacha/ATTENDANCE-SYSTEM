@@ -13,7 +13,7 @@ from .views import (
     location_update
 )
 from .views import session_history, session_history_detail
-from .views import lecturer_students, lecturer_scope
+from .views import lecturer_students, lecturer_scope, admin_students
 from .hod_views import (
     hod_dashboard,
     hod_students,
@@ -42,6 +42,7 @@ urlpatterns = [
     path('lecturer/scope/', lecturer_scope, name='lecturer_scope'),
     path('report/', attendance_report, name='attendance_report'),
     path('admin-report/', admin_report, name='admin_report'),
+    path('admin/students/', admin_students, name='admin_students'),
     path('session-report/<int:session_id>/', session_report, name='session_report'),
 
     # HOD (department scoped)

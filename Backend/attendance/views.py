@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from rest_framework.decorators import api_view, permission_classes
@@ -358,33 +358,21 @@ def start_session(request):
 
     allowed_wifi_bssid=allowed_wifi,
 
-    start_time=timezone.now(),
+    start_time=override_start or timezone.now(),
+
+    end_time=override_end if is_override else None,
 
     is_active=True,
 
     is_override=is_override,
 
     override_reason=override_reason,
-    override_duration_minutes=120
+    override_duration_minutes=(
+        int((override_end - override_start).total_seconds() // 60)
+        if override_start and override_end
+        else 120
+    )
 )
-
-    if override_start and override_end:
-
-        session.start_time = override_start
-
-        session.end_time = override_end
-
-        session.override_duration_minutes = int(
-            (override_end - override_start).total_seconds() // 60
-        )
-
-        session.save(
-            update_fields=[
-                "start_time",
-                "end_time",
-                "override_duration_minutes",
-            ]
-        )
 
     original_start, original_end = timetable_window(session)
 
@@ -1719,6 +1707,144 @@ def admin_report(request):
     return Response({
         "overview": overview,
         "sessions": result,
+    })
+
+
+# ======================================================
+# ADMIN STUDENT ATTENDANCE
+# ======================================================
+
+@api_view(["GET"])
+@permission_classes([IsAdminOrStaff])
+def admin_students(request):
+    """Per-student attendance percentage across all courses.
+
+    The percentage uses the same session-count semantics as the mobile app,
+    HOD views and lecturer reports. A single aggregate query builds the
+    attended-session map so the endpoint stays fast with large student lists.
+    """
+
+    course_id = request.query_params.get("course_id")
+    subject_id = request.query_params.get("subject_id")
+
+    course = None
+    if course_id and str(course_id).isdigit():
+        course = Course.objects.filter(id=int(course_id)).first()
+        if not course:
+            return Response({"detail": "Course not found."}, status=404)
+
+    subject = None
+    if subject_id and str(subject_id).isdigit():
+        subject = Subject.objects.filter(id=int(subject_id)).first()
+        if not subject:
+            return Response({"detail": "Subject not found."}, status=404)
+        if course and subject.course_id != course.id:
+            return Response(
+                {"detail": "Subject does not belong to the selected course."},
+                status=400,
+            )
+
+    sessions = AttendanceSession.objects.all()
+    if course:
+        sessions = sessions.filter(course=course)
+    elif subject:
+        sessions = sessions.filter(course_id=subject.course_id)
+    if subject:
+        sessions = sessions.filter(subject=subject)
+
+    start_date = parse_date(request.query_params.get("start_date") or "")
+    if start_date:
+        sessions = sessions.filter(date__gte=start_date)
+
+    end_date = parse_date(request.query_params.get("end_date") or "")
+    if end_date:
+        sessions = sessions.filter(date__lte=end_date)
+
+    session_rows = list(sessions.values("id", "course_id"))
+    session_ids = [row["id"] for row in session_rows]
+
+    totals_by_course = {}
+    for row in session_rows:
+        course_key = row["course_id"]
+        totals_by_course[course_key] = totals_by_course.get(course_key, 0) + 1
+
+    attended_by_student_course = {}
+    if session_ids:
+        attendance_rows = (
+            Attendance.objects.filter(
+                session_id__in=session_ids,
+                check_in_time__isnull=False,
+            )
+            .exclude(status="ABSENT")
+            .values("student_id", "session__course_id")
+            .annotate(attended=Count("session_id", distinct=True))
+        )
+        attended_by_student_course = {
+            (row["student_id"], row["session__course_id"]): row["attended"]
+            for row in attendance_rows
+        }
+
+    students = Student.objects.select_related(
+        "user",
+        "course",
+        "course__department",
+    )
+    if course:
+        students = students.filter(course=course)
+    elif subject:
+        students = students.filter(course_id=subject.course_id)
+
+    rows = []
+    for student in students.order_by("full_name"):
+        total_sessions = totals_by_course.get(student.course_id, 0)
+        attended = attended_by_student_course.get(
+            (student.id, student.course_id), 0
+        )
+        percentage = (
+            round(attended / total_sessions * 100, 2)
+            if total_sessions
+            else 0.0
+        )
+        rows.append({
+            "student_id": student.id,
+            "username": student.user.username,
+            "name": student.full_name,
+            "registration": student.reg_number,
+            "course": student.course.name if student.course_id else None,
+            "course_code": student.course.code if student.course_id else None,
+            "department": (
+                student.course.department.name
+                if student.course_id and student.course.department_id
+                else None
+            ),
+            "year_of_study": student.year_of_study,
+            "email": student.email,
+            "attended": attended,
+            "total_sessions": total_sessions,
+            "percentage": percentage,
+            "status": attendance_status_label(percentage),
+        })
+
+    average = (
+        round(sum(row["percentage"] for row in rows) / len(rows), 2)
+        if rows
+        else 0.0
+    )
+
+    return Response({
+        "course": course.name if course else None,
+        "course_code": course.code if course else None,
+        "subject": subject.name if subject else None,
+        "subject_id": subject.id if subject else None,
+        "students": rows,
+        "summary": {
+            "total_students": len(rows),
+            "total_sessions": len(session_ids),
+            "average_percentage": average,
+            "critical_students": len(
+                [row for row in rows if row["status"] == "Critical"]
+            ),
+        },
     })
 
 
