@@ -10,45 +10,82 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api, Classroom, Course, Department, Group, User } from "@/lib/api";
 
+type PaginatedUsers = { count?: number; results?: User[] };
+
+function unwrapUsers(payload: PaginatedUsers | User[] | undefined): User[] {
+  if (Array.isArray(payload)) return payload;
+  return payload?.results ?? [];
+}
+
 export default function AdminDashboardPage() {
-  const [users, setUsers] = useState<User[]>([]);
+  const [recentUsers, setRecentUsers] = useState<User[]>([]);
+  const [totalUsers, setTotalUsers] = useState(0);
+  const [studentCount, setStudentCount] = useState(0);
+  const [lecturerCount, setLecturerCount] = useState(0);
   const [groups, setGroups] = useState<Group[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [classrooms, setClassrooms] = useState<Classroom[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [apiOnline, setApiOnline] = useState(true);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const safe = <T,>(promise: Promise<{ data: T }>) =>
+      promise
+        .then((response) => ({ ok: true as const, data: response.data }))
+        .catch(() => ({ ok: false as const }));
+
     Promise.all([
-      api.get<{ results?: User[]; count?: number } | User[]>("/user-management/users/?page_size=100").catch(() => ({ data: [] })),
-      api.get<Group[]>("/user-management/groups/").catch(() => ({ data: [] })),
-      api.get<Course[]>("/courses/").catch(() => ({ data: [] })),
-      api.get<Classroom[]>("/courses/classrooms/").catch(() => ({ data: [] })),
-      api.get<Department[]>("/departments/").catch(() => ({ data: [] })),
-    ]).then(([usersRes, groupsRes, coursesRes, classroomsRes, deptsRes]) => {
-      const userData = Array.isArray(usersRes.data) ? usersRes.data : (usersRes.data as any)?.results ?? [];
-      setUsers(userData);
-      setGroups(Array.isArray(groupsRes.data) ? groupsRes.data : []);
-      setCourses(Array.isArray(coursesRes.data) ? coursesRes.data : []);
-      setClassrooms(Array.isArray(classroomsRes.data) ? classroomsRes.data : []);
-      setDepartments(Array.isArray(deptsRes.data) ? deptsRes.data : []);
+      safe(api.get<PaginatedUsers | User[]>("/user-management/users/", { params: { page_size: 5, ordering: "-id" } })),
+      safe(api.get<PaginatedUsers>("/user-management/users/", { params: { page_size: 1 } })),
+      safe(api.get<PaginatedUsers>("/user-management/users/", { params: { group: "Student", page_size: 1 } })),
+      safe(api.get<PaginatedUsers>("/user-management/users/", { params: { group: "Lecturer", page_size: 1 } })),
+      safe(api.get<Group[]>("/user-management/groups/")),
+      safe(api.get<Course[]>("/courses/")),
+      safe(api.get<Classroom[]>("/courses/classrooms/")),
+      safe(api.get<Department[]>("/departments/")),
+    ]).then(([recent, total, students, lecturers, groupRes, courseRes, classroomRes, deptRes]) => {
+      if (cancelled) return;
+
+      setApiOnline(
+        [recent, total, students, lecturers, groupRes, courseRes, classroomRes, deptRes].every(
+          (result) => result.ok,
+        ),
+      );
+
+      if (recent.ok) setRecentUsers(unwrapUsers(recent.data));
+      if (total.ok) setTotalUsers(total.data?.count ?? 0);
+      if (students.ok) setStudentCount(students.data?.count ?? 0);
+      if (lecturers.ok) setLecturerCount(lecturers.data?.count ?? 0);
+      if (groupRes.ok) setGroups(Array.isArray(groupRes.data) ? groupRes.data : []);
+      if (courseRes.ok) setCourses(Array.isArray(courseRes.data) ? courseRes.data : []);
+      if (classroomRes.ok) setClassrooms(Array.isArray(classroomRes.data) ? classroomRes.data : []);
+      if (deptRes.ok) setDepartments(Array.isArray(deptRes.data) ? deptRes.data : []);
+
       setLoading(false);
     });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const metrics = useMemo(() => {
-    const inGroup = (name: string) => users.filter((u) => u.groups.some((g) => g.toLowerCase() === name)).length;
-    const gpsClassrooms = classrooms.filter((c) => c.latitude && c.longitude).length;
+    const gpsClassrooms = classrooms.filter(
+      (classroom) => classroom.latitude !== null && classroom.longitude !== null,
+    ).length;
     return [
-      { label: "Total Users", value: users.length, icon: Users },
-      { label: "Students", value: inGroup("student"), icon: UserCheck },
-      { label: "Lecturers", value: inGroup("lecturer"), icon: UserRound },
+      { label: "Total Users", value: totalUsers, icon: Users },
+      { label: "Students", value: studentCount, icon: UserCheck },
+      { label: "Lecturers", value: lecturerCount, icon: UserRound },
       { label: "Departments", value: departments.length, icon: Building2 },
       { label: "Courses", value: courses.length, icon: BookOpen },
       { label: "GPS Classrooms", value: gpsClassrooms, icon: MapPin },
       { label: "Groups", value: groups.length, icon: Activity },
     ];
-  }, [users, groups, courses, classrooms, departments]);
+  }, [totalUsers, studentCount, lecturerCount, groups, courses, classrooms, departments]);
 
   if (loading) {
     return (
@@ -73,7 +110,9 @@ export default function AdminDashboardPage() {
         <Card className="border-slate-200 shadow-sm">
           <CardHeader><CardTitle>Recent Users</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            {users.slice(0, 5).map((u) => (
+            {recentUsers.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No users found.</p>
+            ) : recentUsers.map((u) => (
               <div key={u.id} className="flex items-center justify-between rounded-xl border bg-white p-3">
                 <div>
                   <p className="font-medium">{u.full_name || u.username}</p>
@@ -87,13 +126,25 @@ export default function AdminDashboardPage() {
         <Card className="border-slate-200 shadow-sm">
           <CardHeader><CardTitle>System Status</CardTitle></CardHeader>
           <CardContent className="space-y-4">
-            <div className="rounded-xl border bg-emerald-50 p-4 text-emerald-800">
-              <p className="font-medium">API Connected</p>
-              <p className="text-sm">JWT auth active. All services online.</p>
+            <div
+              className={`rounded-xl border p-4 ${
+                apiOnline
+                  ? "bg-emerald-50 text-emerald-800"
+                  : "border-red-200 bg-red-50 text-red-800"
+              }`}
+            >
+              <p className="font-medium">{apiOnline ? "API Connected" : "API Connection Issue"}</p>
+              <p className="text-sm">
+                {apiOnline
+                  ? "JWT auth active. All dashboard endpoints are responding."
+                  : "One or more dashboard endpoints did not respond. Confirm the deployed backend is running the latest main branch."}
+              </p>
             </div>
             <div>
               <p className="mb-2 text-sm font-medium">GPS-enabled Classrooms</p>
-              <p className="text-2xl font-bold">{classrooms.filter((c) => c.latitude).length} / {classrooms.length}</p>
+              <p className="text-2xl font-bold">
+                {classrooms.filter((c) => c.latitude !== null && c.longitude !== null).length} / {classrooms.length}
+              </p>
             </div>
             <div>
               <p className="mb-2 text-sm font-medium">Courses per Department</p>

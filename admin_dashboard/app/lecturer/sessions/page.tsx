@@ -16,6 +16,8 @@ type SessionInfo = {
   course: string;
   subject: string;
   date: string;
+  start_time?: string | null;
+  end_time?: string | null;
   active: boolean;
   total_students: number;
   present: number;
@@ -55,8 +57,11 @@ export default function LecturerSessionsPage() {
     await load();
   }
 
-  function formatDate(dateStr: string) {
-    return new Date(dateStr).toLocaleDateString("en-US", {
+  function formatDate(value?: string | null) {
+    if (!value) return "-";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return value;
+    return parsed.toLocaleString("en-US", {
       year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
     });
   }
@@ -114,7 +119,7 @@ export default function LecturerSessionsPage() {
               <CardContent className="flex items-center justify-between py-4">
                 <div className="grid gap-1">
                   <p className="font-semibold">{s.course} - {s.subject}</p>
-                  <p className="text-sm text-muted-foreground">{formatDate(s.date)}</p>
+                  <p className="text-sm text-muted-foreground">{formatDate(s.start_time ?? s.date)}</p>
                   <div className="flex gap-2 text-sm text-muted-foreground">
                     <span className="flex items-center gap-1"><Users className="h-3 w-3" /> {s.total_students}</span>
                     <span className="text-emerald-600">{s.present} present</span>

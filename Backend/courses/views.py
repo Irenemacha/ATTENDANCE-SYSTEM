@@ -331,6 +331,51 @@ def assign_lecturer_to_course(request):
     return Response({"message": "Lecturer assigned successfully"})
 
 
+def lecturer_assignment_to_dict(assignment):
+    lecturer = assignment.lecturer
+    return {
+        "id": assignment.id,
+        "lecturer": lecturer.id,
+        "lecturer_username": lecturer.username,
+        "lecturer_name": lecturer.get_full_name() or lecturer.username,
+        "course": assignment.course_id,
+        "course_code": assignment.course.code,
+        "course_name": assignment.course.name,
+    }
+
+
+@api_view(["GET"])
+@permission_classes([IsAdminOrStaff])
+def lecturer_assignment_list(request):
+    assignments = LecturerCourse.objects.select_related(
+        "lecturer", "course"
+    ).order_by("course__name", "lecturer__username")
+
+    course_id = request.query_params.get("course_id")
+    if course_id and str(course_id).isdigit():
+        assignments = assignments.filter(course_id=int(course_id))
+
+    lecturer_id = request.query_params.get("lecturer_id")
+    if lecturer_id and str(lecturer_id).isdigit():
+        assignments = assignments.filter(lecturer_id=int(lecturer_id))
+
+    return Response([lecturer_assignment_to_dict(item) for item in assignments])
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAdminOrStaff])
+def lecturer_assignment_detail(request, pk):
+    assignment = LecturerCourse.objects.filter(id=pk).first()
+    if not assignment:
+        return Response(
+            {"detail": "Lecturer assignment not found."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    assignment.delete()
+    return Response({"message": "Lecturer assignment removed"})
+
+
 @api_view(["GET", "POST"])
 @permission_classes([IsAdminOrStaff])
 def timetable_list_create(request):

@@ -19,7 +19,10 @@ from attendance.services import (
     attendance_status_label,
     session_attendance_summary,
     student_attendance_stats,
+    timetable_window,
 )
+
+LATE_START_THRESHOLD_MINUTES = 5
 
 
 # =========================
@@ -114,19 +117,58 @@ def hod_dashboard(request):
                 "percentage": percentage,
             })
 
-    delay_analysis = []
+    delay_stats = {}
+    no_attendance_alerts = []
+
     for session in sessions:
-        first_attendance = Attendance.objects.filter(
-            session=session
-        ).order_by("check_in_time").first()
-        if not first_attendance:
-            delay_analysis.append({
+        expected_start, _ = timetable_window(session)
+        if expected_start:
+            delay_minutes = (
+                session.start_time - expected_start
+            ).total_seconds() / 60
+            if delay_minutes > LATE_START_THRESHOLD_MINUTES:
+                stats = delay_stats.setdefault(
+                    session.lecturer_id,
+                    {
+                        "lecturer": session.lecturer.get_full_name()
+                        or session.lecturer.username,
+                        "late_starts": 0,
+                        "total_delay_minutes": 0.0,
+                        "courses": [],
+                    },
+                )
+                stats["late_starts"] += 1
+                stats["total_delay_minutes"] += delay_minutes
+                course_label = f"{session.course.name} · {session.subject.name}"
+                if course_label not in stats["courses"]:
+                    stats["courses"].append(course_label)
+
+        if not Attendance.objects.filter(session=session).exists():
+            no_attendance_alerts.append({
                 "session_id": session.id,
                 "course": session.course.name,
                 "subject": session.subject.name,
                 "lecturer": session.lecturer.get_full_name() or session.lecturer.username,
                 "issue": "No attendance recorded (possible lecturer delay or session not started on time)",
             })
+
+    delay_analysis = [
+        {
+            "lecturer": stats["lecturer"],
+            "late_starts": stats["late_starts"],
+            "average_delay_minutes": round(
+                stats["total_delay_minutes"] / stats["late_starts"], 1
+            ),
+            "courses": stats["courses"],
+            "issue": (
+                f"{stats['late_starts']} late start"
+                f"{'s' if stats['late_starts'] != 1 else ''} "
+                f"(more than {LATE_START_THRESHOLD_MINUTES} minutes)"
+            ),
+        }
+        for stats in delay_stats.values()
+    ]
+    delay_analysis.extend(no_attendance_alerts)
 
     courses_data = []
     courses = Course.objects.filter(department=department).distinct()

@@ -1,6 +1,6 @@
 import shutil
 import tempfile
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 
 from django.contrib.auth.models import Group, User
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -8,6 +8,7 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from accounts.models import StaffProfile
 from courses.models import (
     Classroom,
     Course,
@@ -15,6 +16,7 @@ from courses.models import (
     LecturerCourse,
     StudentCourse,
     Subject,
+    Timetable,
 )
 from students.models import Student
 
@@ -655,6 +657,7 @@ class AdminStudentAttendanceTests(TestCase):
         self.assertEqual(rows["S002"]["percentage"], 100.0)
         self.assertEqual(rows["S002"]["status"], "Fine")
         self.assertEqual(rows["S003"]["course"], "BIT")
+        self.assertEqual(rows["S003"]["course_id"], self.other_course.id)
         self.assertEqual(rows["S003"]["percentage"], 100.0)
 
         summary = response.data["summary"]
@@ -701,6 +704,143 @@ class AdminStudentAttendanceTests(TestCase):
         self.client.force_authenticate(user=self.student_one.user)
         response = self.client.get("/api/attendance/admin/students/")
         self.assertEqual(response.status_code, 403)
+
+
+class HodDelayAnalysisTests(TestCase):
+    def setUp(self):
+        self.department = Department.objects.create(name="CS")
+        other_department = Department.objects.create(name="Math")
+        self.course = Course.objects.create(
+            name="BSc CS", code="CS01", department=self.department
+        )
+        other_course = Course.objects.create(
+            name="BSc Math", code="MA01", department=other_department
+        )
+        self.subject = Subject.objects.create(
+            name="Algebra", code="CS101", course=self.course
+        )
+        other_subject = Subject.objects.create(
+            name="Calculus", code="MA101", course=other_course
+        )
+        lecturer_group = Group.objects.create(name="Lecturer")
+        self.lecturer = User.objects.create_user(
+            username="lect1",
+            password="pass",
+            first_name="Lena",
+            last_name="Lecturer",
+        )
+        self.lecturer.groups.add(lecturer_group)
+        other_lecturer = User.objects.create_user(username="lect2", password="pass")
+        other_lecturer.groups.add(lecturer_group)
+
+        hod_group = Group.objects.create(name="HOD")
+        self.hod = User.objects.create_user(username="hod1", password="pass")
+        self.hod.groups.add(hod_group)
+        StaffProfile.objects.create(user=self.hod, department=self.department)
+
+        today = timezone.localdate()
+        day_code = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"][
+            today.weekday()
+        ]
+        self.timetable = Timetable.objects.create(
+            course=self.course,
+            lecturer=self.lecturer,
+            day=day_code,
+            start_time=time(9, 0),
+            end_time=time(11, 0),
+            room="LH-1",
+        )
+
+        def aware(clock):
+            return timezone.make_aware(datetime.combine(today, clock))
+
+        self.late_session = AttendanceSession.objects.create(
+            lecturer=self.lecturer,
+            course=self.course,
+            subject=self.subject,
+            date=today,
+            start_time=aware(time(9, 20)),
+            timetable=self.timetable,
+            latitude=0.0,
+            longitude=0.0,
+        )
+        self.on_time_session = AttendanceSession.objects.create(
+            lecturer=self.lecturer,
+            course=self.course,
+            subject=self.subject,
+            date=today,
+            start_time=aware(time(9, 2)),
+            timetable=self.timetable,
+            latitude=0.0,
+            longitude=0.0,
+        )
+        self.other_department_session = AttendanceSession.objects.create(
+            lecturer=other_lecturer,
+            course=other_course,
+            subject=other_subject,
+            date=today,
+            start_time=aware(time(9, 30)),
+            latitude=0.0,
+            longitude=0.0,
+        )
+
+        student_user = User.objects.create_user(username="stud1", password="pass")
+        self.student = Student.objects.create(
+            user=student_user,
+            reg_number="S001",
+            full_name="Stella Student",
+            email="stella@example.com",
+            course=self.course,
+            year_of_study=1,
+        )
+        Attendance.objects.create(
+            student=self.student,
+            session=self.late_session,
+            status="PRESENT",
+            check_in_time=timezone.now(),
+        )
+
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.hod)
+
+    def test_reports_late_starts_and_average_delay(self):
+        response = self.client.get("/api/attendance/hod/dashboard/")
+        self.assertEqual(response.status_code, 200, response.data)
+
+        late_rows = [
+            row for row in response.data["delay_analysis"] if row.get("late_starts")
+        ]
+        self.assertEqual(len(late_rows), 1)
+        self.assertEqual(late_rows[0]["lecturer"], "Lena Lecturer")
+        self.assertEqual(late_rows[0]["late_starts"], 1)
+        self.assertAlmostEqual(late_rows[0]["average_delay_minutes"], 20.0)
+        self.assertEqual(late_rows[0]["courses"], ["BSc CS · Algebra"])
+
+    def test_reports_sessions_without_attendance(self):
+        response = self.client.get("/api/attendance/hod/dashboard/")
+        self.assertEqual(response.status_code, 200, response.data)
+
+        issues = {
+            row["session_id"]: row
+            for row in response.data["delay_analysis"]
+            if "session_id" in row
+        }
+        self.assertIn(self.on_time_session.id, issues)
+        self.assertIn("No attendance recorded", issues[self.on_time_session.id]["issue"])
+        self.assertNotIn(self.late_session.id, issues)
+
+    def test_excludes_other_departments(self):
+        response = self.client.get("/api/attendance/hod/dashboard/")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["total_sessions"], 2)
+        self.assertEqual(
+            {
+                row["session_id"]
+                for row in response.data["delay_analysis"]
+                if "session_id" in row
+            },
+            {self.on_time_session.id},
+        )
 
 
 class HodLedgerUploadTests(TestCase):

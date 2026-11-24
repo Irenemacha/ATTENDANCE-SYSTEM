@@ -18,6 +18,7 @@ type AdminAttendanceRow = {
   name: string;
   registration: string;
   course: string | null;
+  course_id?: number | null;
   course_code?: string | null;
   department?: string | null;
   year_of_study?: number | null;
@@ -107,7 +108,13 @@ export default function StudentsPage() {
       student.name.toLowerCase().includes(query) ||
       (student.username || "").toLowerCase().includes(query) ||
       (student.registration || "").toLowerCase().includes(query);
-    const matchesCourse = !courseFilter || student.course === courseFilter;
+
+    const selectedCourse = courses.find((course) => String(course.id) === courseFilter);
+    const matchesCourse =
+      !courseFilter ||
+      (student.course_id != null && String(student.course_id) === courseFilter) ||
+      (student.course_id == null && student.course === selectedCourse?.name);
+
     return matchesSearch && matchesCourse;
   });
 
@@ -120,7 +127,7 @@ export default function StudentsPage() {
         </p>
         {!loading && students.length > 0 && !percentagesAvailable ? (
           <p className="mt-2 text-xs text-amber-600">
-            Attendance percentages will appear once the updated backend is deployed.
+            Attendance summaries are unavailable from this backend deployment. Showing the student directory instead.
           </p>
         ) : null}
       </div>
@@ -144,7 +151,7 @@ export default function StudentsPage() {
             >
               <option value="">All courses</option>
               {courses.map((c) => (
-                <option key={c.id} value={c.name}>{c.name} ({c.code})</option>
+                <option key={c.id} value={c.id}>{c.name} ({c.code})</option>
               ))}
             </select>
           </div>

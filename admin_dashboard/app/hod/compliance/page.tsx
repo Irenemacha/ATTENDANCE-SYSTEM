@@ -43,7 +43,8 @@ export default function HODCompliancePage() {
                     <div>
                       <p className="font-medium text-red-800">{alert.course}</p>
                       <p className="text-sm text-red-600 flex items-center gap-1">
-                        <UserRound className="h-3 w-3" /> {alert.lecturer}
+                        <UserRound className="h-3 w-3" />
+                        {alert.subject ? `${alert.subject} · ` : ""}{alert.lecturer}
                       </p>
                     </div>
                     <Badge className="bg-red-100 text-red-700 text-base">{alert.percentage}%</Badge>
@@ -73,12 +74,25 @@ export default function HODCompliancePage() {
                 <div key={i} className="flex items-center justify-between rounded-lg border p-4">
                   <div>
                     <p className="font-medium">{d.lecturer}</p>
-                    <p className="text-sm text-muted-foreground">{d.late_starts} late start{d.late_starts !== 1 ? "s" : ""}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {typeof d.late_starts === "number" && d.late_starts > 0
+                        ? `${d.late_starts} late start${d.late_starts === 1 ? "" : "s"}`
+                        : d.issue ?? "No delay data reported."}
+                    </p>
+                    {d.courses?.length ? (
+                      <p className="text-xs text-muted-foreground">{d.courses.join(", ")}</p>
+                    ) : d.course ? (
+                      <p className="text-xs text-muted-foreground">
+                        {d.course}{d.subject ? ` · ${d.subject}` : ""}
+                      </p>
+                    ) : null}
                   </div>
-                  <div className="text-right">
-                    <p className="text-lg font-bold text-amber-600">{d.average_delay_minutes}m</p>
-                    <p className="text-xs text-muted-foreground">avg delay</p>
-                  </div>
+                  {typeof d.average_delay_minutes === "number" && (d.late_starts ?? 0) > 0 ? (
+                    <div className="text-right">
+                      <p className="text-lg font-bold text-amber-600">{d.average_delay_minutes}m</p>
+                      <p className="text-xs text-muted-foreground">avg delay</p>
+                    </div>
+                  ) : null}
                 </div>
               )) : (
                 <div className="rounded-lg border bg-emerald-50 p-4 text-emerald-700">

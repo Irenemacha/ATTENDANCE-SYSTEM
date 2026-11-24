@@ -372,8 +372,10 @@ class UserManagementViewSet(viewsets.ModelViewSet):
     queryset = User.objects.prefetch_related("groups").order_by("id")
     permission_classes = [IsAdminOrStaff]
     pagination_class = StandardPagination
-    filter_backends = [filters.SearchFilter]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["username", "email", "first_name", "last_name", "groups__name"]
+    ordering_fields = ["id", "username", "email", "first_name", "last_name"]
+    ordering = ["id"]
 
     def get_serializer_class(self):
         if self.action in ["create", "update", "partial_update"]:

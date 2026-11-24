@@ -36,7 +36,7 @@ export default function HODUploadPage() {
     <HODShell>
       <div className="mb-6">
         <h1 className="text-2xl font-semibold">Upload Finalized Ledger</h1>
-        <p className="text-muted-foreground">Upload finalized attendance ledgers to the university ERP system.</p>
+        <p className="text-muted-foreground">Upload finalized attendance ledgers for secure storage and record keeping.</p>
       </div>
 
       <Card className="max-w-xl border-slate-200 shadow-sm">
@@ -49,8 +49,8 @@ export default function HODUploadPage() {
           </label>
 
           <div className="rounded-lg border bg-muted/50 p-3 text-sm text-muted-foreground">
-            <p className="font-medium">ERP Integration</p>
-            <p>The finalized ledger will be sent to the university ERP system via the configured API.</p>
+            <p className="font-medium">Ledger Storage</p>
+            <p>The finalized ledger is stored on the server and linked to your department.</p>
           </div>
 
           {error && <div className="flex items-center gap-2 text-sm text-destructive"><AlertCircle className="h-4 w-4" />{error}</div>}
@@ -58,7 +58,7 @@ export default function HODUploadPage() {
 
           <Button className="w-full" disabled={!file || uploading} onClick={uploadLedger}>
             <FileSpreadsheet className="mr-2 h-4 w-4" />
-            {uploading ? "Uploading..." : "Upload to ERP"}
+            {uploading ? "Uploading..." : "Upload Ledger"}
           </Button>
         </CardContent>
       </Card>

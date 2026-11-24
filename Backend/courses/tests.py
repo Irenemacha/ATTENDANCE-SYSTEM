@@ -5,7 +5,7 @@ from django.test import TestCase
 from openpyxl import Workbook
 from rest_framework.test import APIClient
 
-from .models import Course, Department, Timetable
+from .models import Course, Department, LecturerCourse, Timetable
 
 
 def build_workbook(headers, rows):
@@ -417,4 +417,57 @@ class EnrollmentApiTests(TestCase):
                 format="json",
             ).status_code,
             403,
+        )
+
+
+class LecturerAssignmentApiTests(TestCase):
+    def setUp(self):
+        self.department = Department.objects.create(name="CS")
+        self.course = Course.objects.create(
+            name="BSc Computer Science", code="CS01", department=self.department
+        )
+        self.other_course = Course.objects.create(
+            name="BSc Mathematics", code="MA01", department=self.department
+        )
+        lecturer_group = Group.objects.create(name="Lecturer")
+        self.lecturer = User.objects.create_user(
+            username="jdoe", password="pass", first_name="John", last_name="Doe"
+        )
+        self.lecturer.groups.add(lecturer_group)
+        self.admin = User.objects.create_user(
+            username="admin", password="pass", is_staff=True
+        )
+        self.assignment = LecturerCourse.objects.create(
+            lecturer=self.lecturer, course=self.course
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.admin)
+
+    def test_lists_assignments_with_course_and_lecturer_details(self):
+        response = self.client.get("/api/courses/lecturer-assignments/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["lecturer_name"], "John Doe")
+        self.assertEqual(response.data[0]["course_code"], "CS01")
+
+    def test_filters_assignments_by_course(self):
+        response = self.client.get(
+            f"/api/courses/lecturer-assignments/?course_id={self.other_course.id}"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, [])
+
+    def test_deletes_assignment(self):
+        response = self.client.delete(
+            f"/api/courses/lecturer-assignments/{self.assignment.id}/"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(
+            LecturerCourse.objects.filter(id=self.assignment.id).exists()
+        )
+
+    def test_requires_admin(self):
+        self.client.force_authenticate(user=self.lecturer)
+        self.assertEqual(
+            self.client.get("/api/courses/lecturer-assignments/").status_code, 403
         )

@@ -65,6 +65,16 @@ export type Subject = {
   course_code?: string;
 };
 
+export type LecturerAssignment = {
+  id: number;
+  lecturer: number;
+  lecturer_username: string;
+  lecturer_name: string;
+  course: number;
+  course_code: string;
+  course_name: string;
+};
+
 export type Enrollment = {
   id: number;
   student: number;
@@ -212,6 +222,7 @@ export type HODDashboard = {
     issue?: string;
     late_starts?: number;
     average_delay_minutes?: number;
+    courses?: string[];
   }>;
   courses: Array<{
     course: string;
@@ -230,6 +241,7 @@ export type StudentAttendance = {
   name: string;
   registration: string;
   course: string | null;
+  course_id?: number | null;
   course_code: string | null;
   department?: string | null;
   year_of_study?: number | null;

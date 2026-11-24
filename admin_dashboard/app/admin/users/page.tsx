@@ -57,20 +57,29 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    load();
     api.get<Group[]>("/user-management/groups/").then((response) => setGroups(response.data));
     api.get<Department[]>("/departments/").then((response) => setDepartments(response.data)).catch(() => setDepartments([]));
     api.get<Course[]>("/courses/").then((response) => setCourses(Array.isArray(response.data) ? response.data : (response.data as any)?.results ?? [])).catch(() => setCourses([]));
+  }, []);
+
+  useEffect(() => {
+    load();
   }, [page, search]);
 
   async function load() {
     setLoading(true);
-    const response = await api.get<{ count: number; results: User[] }>("/user-management/users/", {
-      params: { page, search },
-    });
-    setUsers(response.data.results);
-    setCount(response.data.count);
-    setLoading(false);
+    try {
+      const response = await api.get<{ count: number; results: User[] }>("/user-management/users/", {
+        params: { page, search },
+      });
+      setUsers(response.data.results);
+      setCount(response.data.count);
+    } catch {
+      setUsers([]);
+      setCount(0);
+    } finally {
+      setLoading(false);
+    }
   }
 
   function openCreate() {
@@ -169,7 +178,15 @@ export default function UsersPage() {
           <div className="mb-4 flex flex-col gap-3 sm:flex-row">
             <div className="relative flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input className="pl-9" placeholder="Search users" value={search} onChange={(event) => setSearch(event.target.value)} />
+              <Input
+                className="pl-9"
+                placeholder="Search users"
+                value={search}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  setPage(1);
+                }}
+              />
             </div>
           </div>
           {loading ? (

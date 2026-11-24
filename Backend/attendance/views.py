@@ -1043,6 +1043,10 @@ def lecturer_dashboard(request):
 
             "date": session.date,
 
+            "start_time": session.start_time,
+
+            "end_time": session.end_time,
+
             "active": session.is_active,
 
             "total_students": total,
@@ -1811,6 +1815,7 @@ def admin_students(request):
             "name": student.full_name,
             "registration": student.reg_number,
             "course": student.course.name if student.course_id else None,
+            "course_id": student.course_id,
             "course_code": student.course.code if student.course_id else None,
             "department": (
                 student.course.department.name

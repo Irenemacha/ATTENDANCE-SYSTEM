@@ -80,7 +80,9 @@ export default function HODDashboardPage() {
                 <div key={i} className="mb-2 flex items-center justify-between rounded-lg border border-red-100 bg-red-50 p-3">
                   <div>
                     <p className="font-medium text-red-800">{alert.course}</p>
-                    <p className="text-sm text-red-600">{alert.lecturer}</p>
+                    <p className="text-sm text-red-600">
+                      {alert.subject ? `${alert.subject} · ` : ""}{alert.lecturer}
+                    </p>
                   </div>
                   <Badge className="bg-red-100 text-red-700">{alert.percentage}%</Badge>
                 </div>
@@ -97,9 +99,22 @@ export default function HODDashboardPage() {
                 <div key={i} className="mb-2 flex items-center justify-between rounded-lg border p-3">
                   <div>
                     <p className="font-medium">{d.lecturer}</p>
-                    <p className="text-sm text-muted-foreground">{d.late_starts} late starts</p>
+                    <p className="text-sm text-muted-foreground">
+                      {typeof d.late_starts === "number" && d.late_starts > 0
+                        ? `${d.late_starts} late start${d.late_starts === 1 ? "" : "s"}`
+                        : d.issue ?? "No delay data reported."}
+                    </p>
+                    {d.courses?.length ? (
+                      <p className="text-xs text-muted-foreground">{d.courses.join(", ")}</p>
+                    ) : d.course ? (
+                      <p className="text-xs text-muted-foreground">
+                        {d.course}{d.subject ? ` · ${d.subject}` : ""}
+                      </p>
+                    ) : null}
                   </div>
-                  <Badge>{d.average_delay_minutes} min avg</Badge>
+                  {typeof d.average_delay_minutes === "number" && (d.late_starts ?? 0) > 0 ? (
+                    <Badge>{d.average_delay_minutes} min avg</Badge>
+                  ) : null}
                 </div>
               )) : (
                 <p className="text-sm text-muted-foreground">No delay data available.</p>
